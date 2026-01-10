@@ -1,15 +1,28 @@
+// =====================================================
+// PoE2 Farm Calculator - FINAL CLEAN APP.JS
+// Uses ./data/prices.json (same domain, GitHub Pages OK)
+// =====================================================
+
 let items = [];
-let itemMap = new Map();
-
-let exaltIcon = "";
-let divineIcon = "";
-let divineInEx = null; // 1 Divine = X Ex
-
 let activeTab = "currency";
 
-// ---------- helpers ----------
+let itemMap = new Map();
+
+// Icons + rates
+let exaltIcon = "";
+let divineIcon = "";
+
+let exChaos = null;     // 1 Ex = X Chaos
+let divineInEx = null;  // 1 Div = X Ex
+
+// ---------------- helpers ----------------
 function cleanName(name) {
   return String(name || "").replace(/\s*WIKI\s*$/i, "").trim();
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+  }[m]));
 }
 function setStatus(msg) {
   const el = document.getElementById("fetchStatus");
@@ -25,29 +38,30 @@ function setHTML(id, html) {
   const el = document.getElementById(id);
   if (el) el.innerHTML = html;
 }
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, m => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
-  }[m]));
+function $(id){ return document.getElementById(id); }
+
+function findRowContains(needle) {
+  const n = needle.toLowerCase();
+  return items.find(x => (x.name || "").toLowerCase().includes(n)) || null;
 }
 
-// ---------- totals formatter (Ex/Div with icons) ----------
+// ---------------- dual totals formatter (Ex / Div) ----------------
 function formatDual(exValue) {
   const ex = Number(exValue || 0);
-
-  // ✅ correct conversion: Div = Ex / (Ex per Div)
   const div = (divineInEx && divineInEx > 0) ? (ex / divineInEx) : 0;
 
   return `
     <span class="dual">
-      <span>${ex.toFixed(2)}</span>${exaltIcon ? `<img class="pIcon" src="${exaltIcon}" alt="Ex">` : ""}
+      <span>${ex.toFixed(2)}</span>
+      ${exaltIcon ? `<img class="pIcon" src="${exaltIcon}" alt="Ex">` : ""}
       <span class="sep">/</span>
-      <span>${div.toFixed(2)}</span>${divineIcon ? `<img class="pIcon" src="${divineIcon}" alt="Div">` : ""}
+      <span>${div.toFixed(2)}</span>
+      ${divineIcon ? `<img class="pIcon" src="${divineIcon}" alt="Div">` : ""}
     </span>
   `;
 }
 
-// ---------- load prices.json ----------
+// ---------------- load + compute rates ----------------
 async function loadData() {
   try {
     setStatus("Status: loading data/prices.json...");
@@ -58,23 +72,21 @@ async function loadData() {
     items = (data.lines || []).map(x => ({
       name: cleanName(x.name),
       amount: Number(x.amount ?? 0),
-      unit: cleanName(x.unit || ""),     // IMPORTANT
+      unit: cleanName(x.unit || ""),
       icon: x.icon || "",
       unitIcon: x.unitIcon || "",
-      exaltedValue: Number(x.exaltedValue ?? 0) // peut être 0 => on recalculera
+      exaltedValue: Number(x.exaltedValue ?? 0) // may be missing => we compute
     }));
 
-    // map
+    // Build initial map
     itemMap = new Map(items.map(x => [x.name.toLowerCase(), x]));
 
-    // base icon (Exalted)
-    exaltIcon = data.baseIcon || itemMap.get("exalted orb")?.icon || "";
+    // Icons
+    exaltIcon = data.baseIcon || findRowContains("exalted orb")?.icon || "";
+    divineIcon = findRowContains("divine orb")?.icon || "";
 
-    // calc rates + fill exaltedValue for all items
-    computeRatesAndExalted();
-
-    // divine icon after compute
-    divineIcon = itemMap.get("divine orb")?.icon || "";
+    // Compute rates + fill exaltedValue
+    computeRatesAndFillExalted();
 
     setStatus(
       `Status: OK ✅ items=${items.length} | 1 Ex = ${exChaos ? exChaos.toFixed(2) : "?"} Chaos | 1 Div = ${divineInEx ? divineInEx.toFixed(4) : "?"} Ex`
@@ -82,10 +94,16 @@ async function loadData() {
 
     fillDatalist();
     bindTabs();
-    renderLeftList();
-    refreshAllLootPrices();
+    renderMarketList();
 
+    // restore saved state (after items are ready)
     loadState();
+
+    // ensure at least 1 loot row
+    if (!document.querySelector("#lootBody tr")) addLootRow();
+
+    // update prices + totals
+    refreshAllLootPrices();
     recalcAll();
 
   } catch (e) {
@@ -93,66 +111,66 @@ async function loadData() {
   }
 }
 
-/**
- * Compute:
- * - exChaos: Chaos per 1 Exalted
- * - divineInEx: Exalted per 1 Divine
- * - and fill item.exaltedValue if missing (0)
- */
-let exChaos = null; // 1 Ex = X Chaos
+function computeRatesAndFillExalted() {
+  // Find Ex row (often "Perfect Exalted Orb")
+  const exRow = findRowContains("exalted orb") || findRowContains("perfect exalted");
+  exChaos = null;
 
-function computeRatesAndExalted() {
-  // 1) exChaos from "Exalted Orb" row, if it is priced in Chaos
-  const exRow = itemMap.get("exalted orb");
-  if (exRow && exRow.unit.toLowerCase() === "chaos orb" && exRow.amount > 0) {
-    exChaos = exRow.amount; // Chaos per Ex
-  } else {
-    exChaos = null;
+  if (exRow) {
+    const u = (exRow.unit || "").toLowerCase();
+    if (u === "chaos orb" && exRow.amount > 0) {
+      exChaos = exRow.amount; // chaos per Ex
+    }
   }
 
-  // 2) divineInEx from "Divine Orb"
-  const divRow = itemMap.get("divine orb");
+  // Find Divine row
+  const divRow = findRowContains("divine orb");
+  divineInEx = null;
 
-  // Priority: if exaltedValue already present and >0
+  // Priority: if divine already has exaltedValue
   if (divRow && divRow.exaltedValue && divRow.exaltedValue > 0) {
     divineInEx = divRow.exaltedValue;
-  } else {
-    divineInEx = null;
-    // If Divine is in Chaos and exChaos known => divineInEx = (DivChaos / exChaos)
-    if (divRow && divRow.unit.toLowerCase() === "chaos orb" && divRow.amount > 0 && exChaos && exChaos > 0) {
+  } else if (divRow) {
+    const u = (divRow.unit || "").toLowerCase();
+
+    // Divine in Chaos => convert using exChaos
+    if (u === "chaos orb" && divRow.amount > 0 && exChaos && exChaos > 0) {
       divineInEx = divRow.amount / exChaos;
     }
-    // If Divine is in Exalted directly (rare)
-    if (divRow && divRow.unit.toLowerCase() === "exalted orb" && divRow.amount > 0) {
+
+    // Divine in Ex directly
+    if (u === "exalted orb" && divRow.amount > 0) {
       divineInEx = divRow.amount;
     }
+
+    // Fallback
+    if (u === "divine orb") divineInEx = 1;
   }
 
-  // 3) fill exaltedValue for each item if missing/0
+  // Fill exaltedValue for ALL items if missing/0
   items.forEach(it => {
     if (it.exaltedValue && it.exaltedValue > 0) return;
 
     const u = (it.unit || "").toLowerCase();
 
-    // If priced in Chaos
+    // Chaos => Ex
     if (u === "chaos orb" && exChaos && exChaos > 0) {
       it.exaltedValue = it.amount / exChaos;
       return;
     }
 
-    // If priced in Divine
+    // Divine => Ex
     if (u === "divine orb" && divineInEx && divineInEx > 0) {
       it.exaltedValue = it.amount * divineInEx;
       return;
     }
 
-    // If priced in Exalted already
+    // Exalted => Ex
     if (u === "exalted orb") {
       it.exaltedValue = it.amount;
       return;
     }
 
-    // else keep 0
     it.exaltedValue = 0;
   });
 
@@ -160,43 +178,45 @@ function computeRatesAndExalted() {
   itemMap = new Map(items.map(x => [x.name.toLowerCase(), x]));
 }
 
-
-// ---------- tabs ----------
+// ---------------- tabs ----------------
 function bindTabs() {
   document.querySelectorAll(".tab").forEach(btn => {
     btn.onclick = () => {
       document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       activeTab = btn.dataset.tab || "currency";
-
-      renderLeftList();
-      saveState(); // keep tab
+      renderMarketList();
+      saveState();
     };
+  });
+
+  // restore active class if needed
+  document.querySelectorAll(".tab").forEach(b => {
+    b.classList.toggle("active", (b.dataset.tab || "currency") === activeTab);
   });
 }
 
-// ---------- left list (market) ----------
-function renderLeftList() {
-  const panel = document.getElementById("currencyList");
-  const q = (document.getElementById("currencySearch")?.value || "").trim().toLowerCase();
+// ---------------- market list ----------------
+function renderMarketList() {
+  const panel = $("currencyList");
   if (!panel) return;
 
+  const q = ($("currencySearch")?.value || "").trim().toLowerCase();
   panel.innerHTML = "";
 
   if (activeTab !== "currency") {
-    panel.innerHTML = `<div style="color:#bbb;padding:10px;">Coming soon: ${escapeHtml(activeTab)} (UI ready)</div>`;
+    panel.innerHTML = `<div style="color:#bbb;padding:10px;">Coming soon: ${escapeHtml(activeTab)}</div>`;
     return;
   }
 
   const filtered = items
-    .filter(x => x.name.toLowerCase().includes(q))
+    .filter(x => (x.name || "").toLowerCase().includes(q))
     .slice(0, 300);
 
   filtered.forEach(x => {
     const row = document.createElement("div");
     row.className = "currency-item";
 
-    // ✅ show value + unit text + (optional) unit icon
     const rightText = x.unit ? `${x.amount} ${x.unit}` : `${x.amount}`;
 
     row.innerHTML = `
@@ -210,15 +230,14 @@ function renderLeftList() {
       </small>
     `;
 
-    row.addEventListener("click", () => addLootLineWithName(x.name));
+    row.addEventListener("click", () => addLootRowWithName(x.name));
     panel.appendChild(row);
   });
 }
 
 function fillDatalist() {
-  const dl = document.getElementById("currencyDatalist");
+  const dl = $("currencyDatalist");
   if (!dl) return;
-
   dl.innerHTML = "";
   items.forEach(x => {
     const opt = document.createElement("option");
@@ -227,8 +246,11 @@ function fillDatalist() {
   });
 }
 
-// ---------- loot rows ----------
-function addLootLine() {
+// ---------------- loot table ----------------
+function addLootRow() {
+  const body = $("lootBody");
+  if (!body) return null;
+
   const tr = document.createElement("tr");
   tr.className = "lootRow";
 
@@ -241,31 +263,23 @@ function addLootLine() {
     </td>
     <td>
       <div class="priceCell">
-        <span class="lootPrice">0</span>
-        <img class="baseIcon" alt="">
+        <span class="lootPrice">0.00</span>
+        ${exaltIcon ? `<img class="baseIcon" src="${exaltIcon}" alt="Ex">` : `<img class="baseIcon" style="display:none" alt="">`}
       </div>
     </td>
     <td><input class="lootQty" type="number" value="0" min="0"></td>
     <td><button type="button" class="deleteBtn" title="Delete">✖</button></td>
   `;
 
-  document.getElementById("lootBody").appendChild(tr);
+  body.appendChild(tr);
 
   const itemInput = tr.querySelector(".lootItem");
   const qtyInput = tr.querySelector(".lootQty");
   const delBtn = tr.querySelector(".deleteBtn");
 
-  // base icon (exalted) next to price (no text)
-  const baseImg = tr.querySelector(".baseIcon");
-  if (exaltIcon) {
-    baseImg.src = exaltIcon;
-    baseImg.style.display = "block";
-  } else {
-    baseImg.style.display = "none";
-  }
-
   itemInput.addEventListener("input", () => {
-    updatePrice(itemInput);
+    updateLootRowPrice(tr);
+    recalcAll();
     saveState();
   });
 
@@ -283,15 +297,19 @@ function addLootLine() {
   return tr;
 }
 
-function addLootLineWithName(name) {
-  const tr = addLootLine();
+function addLootRowWithName(name) {
+  const tr = addLootRow();
+  if (!tr) return;
   tr.querySelector(".lootItem").value = name;
-  updatePrice(tr.querySelector(".lootItem"));
+  updateLootRowPrice(tr);
   recalcAll();
   saveState();
 }
 
-function addManualLine() {
+function addManualRow() {
+  const body = $("lootBody");
+  if (!body) return null;
+
   const tr = document.createElement("tr");
   tr.className = "lootRow manualRow";
 
@@ -302,39 +320,33 @@ function addManualLine() {
     <td><button type="button" class="deleteBtn" title="Delete">✖</button></td>
   `;
 
-  document.getElementById("lootBody").appendChild(tr);
-
-  tr.querySelector(".deleteBtn").addEventListener("click", () => {
-    tr.remove();
-    recalcAll();
-    saveState();
-  });
+  body.appendChild(tr);
 
   tr.querySelector(".manualPrice").addEventListener("input", () => {
-    recalcAll();
-    saveState();
+    recalcAll(); saveState();
   });
-
   tr.querySelector(".lootQty").addEventListener("input", () => {
-    recalcAll();
-    saveState();
+    recalcAll(); saveState();
   });
+  tr.querySelector(".lootItem").addEventListener("input", saveState);
 
-  tr.querySelector(".lootItem").addEventListener("input", () => saveState());
+  tr.querySelector(".deleteBtn").addEventListener("click", () => {
+    tr.remove(); recalcAll(); saveState();
+  });
 
   return tr;
 }
 
-function updatePrice(input) {
-  const row = input.closest("tr");
-  if (row.classList.contains("manualRow")) { recalcAll(); return; }
+function updateLootRowPrice(tr) {
+  if (!tr || tr.classList.contains("manualRow")) return;
 
-  const name = (input.value || "").trim().toLowerCase();
+  const inp = tr.querySelector(".lootItem");
+  const name = (inp?.value || "").trim().toLowerCase();
+
   const found = itemMap.get(name);
 
-  const priceEl = row.querySelector(".lootPrice");
-  const iconEl = row.querySelector(".lootIcon");
-
+  // item icon (next to item)
+  const iconEl = tr.querySelector(".lootIcon");
   if (found?.icon) {
     iconEl.src = found.icon;
     iconEl.style.display = "block";
@@ -342,41 +354,44 @@ function updatePrice(input) {
     iconEl.style.display = "none";
   }
 
-  // Right table = Exalted only
+  // price always in Exalted
   const ex = found ? Number(found.exaltedValue || 0) : 0;
-  priceEl.textContent = ex.toFixed(2);
-
-  recalcAll();
+  tr.querySelector(".lootPrice").textContent = ex.toFixed(2);
 }
 
 function refreshAllLootPrices() {
   document.querySelectorAll("#lootBody tr").forEach(tr => {
     if (tr.classList.contains("manualRow")) return;
-    const inp = tr.querySelector(".lootItem");
-    if (inp) updatePrice(inp);
+    updateLootRowPrice(tr);
   });
 }
 
-// ---------- calculations ----------
+// ---------------- calculations ----------------
 function calcInvestEx() {
+  // costPerMap is EXALTED
   const maps = num("maps");
-  const ppm = num("costPerMap");
-  return maps * ppm;
+  const cost = num("costPerMap");
+  return maps * cost;
 }
+
 function calcLootEx() {
   let total = 0;
-  document.querySelectorAll("#lootBody tr").forEach(row => {
-    const qty = Number(row.querySelector(".lootQty")?.value || 0);
-    if (row.classList.contains("manualRow")) {
-      const p = Number(row.querySelector(".manualPrice")?.value || 0);
+
+  document.querySelectorAll("#lootBody tr").forEach(tr => {
+    const qty = Number(tr.querySelector(".lootQty")?.value || 0);
+
+    if (tr.classList.contains("manualRow")) {
+      const p = Number(tr.querySelector(".manualPrice")?.value || 0);
       total += p * qty;
     } else {
-      const p = Number(row.querySelector(".lootPrice")?.textContent || 0);
+      const p = Number(tr.querySelector(".lootPrice")?.textContent || 0);
       total += p * qty;
     }
   });
+
   return total;
 }
+
 function recalcAll() {
   const invest = calcInvestEx();
   const loot = calcLootEx();
@@ -387,21 +402,21 @@ function recalcAll() {
   setHTML("gain", formatDual(gain));
 }
 
-// ---------- storage ----------
+// ---------------- storage ----------------
 function saveState() {
-  const rows = [...document.querySelectorAll("#lootBody tr")].map(r => {
-    const manual = r.classList.contains("manualRow");
+  const rows = [...document.querySelectorAll("#lootBody tr")].map(tr => {
+    const manual = tr.classList.contains("manualRow");
     return {
       manual,
-      item: r.querySelector(".lootItem")?.value || "",
-      qty: Number(r.querySelector(".lootQty")?.value || 0),
-      price: manual ? Number(r.querySelector(".manualPrice")?.value || 0) : null
+      item: tr.querySelector(".lootItem")?.value || "",
+      qty: Number(tr.querySelector(".lootQty")?.value || 0),
+      price: manual ? Number(tr.querySelector(".manualPrice")?.value || 0) : null
     };
   });
 
   const invest = {
-    maps: document.getElementById("maps")?.value ?? "",
-    costPerMap: document.getElementById("costPerMap")?.value ?? ""
+    maps: $("maps")?.value ?? "",
+    costPerMap: $("costPerMap")?.value ?? ""
   };
 
   localStorage.setItem("poe2FarmState", JSON.stringify({ rows, invest, activeTab }));
@@ -415,77 +430,80 @@ function loadState() {
     const state = JSON.parse(raw);
 
     if (state?.invest) {
-      if (document.getElementById("maps")) document.getElementById("maps").value = state.invest.maps ?? "10";
-      if (document.getElementById("costPerMap")) document.getElementById("costPerMap").value = state.invest.costPerMap ?? "0";
+      if ($("maps")) $("maps").value = state.invest.maps ?? "10";
+      if ($("costPerMap")) $("costPerMap").value = state.invest.costPerMap ?? "0";
     }
 
     if (state?.activeTab) activeTab = state.activeTab;
 
+    // restore tab UI
     document.querySelectorAll(".tab").forEach(b => {
-      b.classList.toggle("active", b.dataset.tab === activeTab);
+      b.classList.toggle("active", (b.dataset.tab || "currency") === activeTab);
     });
 
+    // restore rows
     if (Array.isArray(state?.rows)) {
-      document.getElementById("lootBody").innerHTML = "";
+      $("lootBody").innerHTML = "";
       state.rows.forEach(r => {
         if (r.manual) {
-          const tr = addManualLine();
+          const tr = addManualRow();
           tr.querySelector(".lootItem").value = r.item || "";
           tr.querySelector(".lootQty").value = r.qty ?? 0;
           tr.querySelector(".manualPrice").value = r.price ?? 0;
         } else {
-          const tr = addLootLine();
+          const tr = addLootRow();
           tr.querySelector(".lootItem").value = r.item || "";
           tr.querySelector(".lootQty").value = r.qty ?? 0;
-          updatePrice(tr.querySelector(".lootItem"));
+          updateLootRowPrice(tr);
         }
       });
     }
 
-    renderLeftList();
+    renderMarketList();
     recalcAll();
-  } catch {}
+
+  } catch {
+    // ignore
+  }
 }
 
-// ---------- reset ----------
+// ---------------- reset ----------------
 function resetAll() {
   localStorage.removeItem("poe2FarmState");
 
-  document.getElementById("maps").value = "10";
-  document.getElementById("costPerMap").value = "0";
+  if ($("maps")) $("maps").value = "10";
+  if ($("costPerMap")) $("costPerMap").value = "0";
 
-  document.getElementById("lootBody").innerHTML = "";
-  addLootLine();
+  if ($("lootBody")) {
+    $("lootBody").innerHTML = "";
+    addLootRow();
+  }
 
   activeTab = "currency";
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === "currency"));
+  document.querySelectorAll(".tab").forEach(b => {
+    b.classList.toggle("active", (b.dataset.tab || "currency") === "currency");
+  });
 
-  renderLeftList();
+  renderMarketList();
   recalcAll();
   saveState();
   setStatus("Status: reset ✅");
 }
 
-// ---------- init ----------
+// ---------------- init ----------------
 document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("currencySearch")?.addEventListener("input", renderLeftList);
+  $("currencySearch")?.addEventListener("input", renderMarketList);
 
   ["maps", "costPerMap"].forEach(id => {
-    document.getElementById(id)?.addEventListener("input", () => {
-      recalcAll();
-      saveState();
-    });
+    $(id)?.addEventListener("input", () => { recalcAll(); saveState(); });
   });
 
-  document.getElementById("resetBtn")?.addEventListener("click", resetAll);
+  $("resetBtn")?.addEventListener("click", resetAll);
 
-  window.addLootLine = addLootLine;
-  window.addManualLine = addManualLine;
+  // expose for HTML buttons
+  window.addLootLine = addLootRow;
+  window.addManualLine = addManualRow;
   window.resetAll = resetAll;
 
-  loadData().then(() => {
-    if (!document.querySelector("#lootBody tr")) addLootLine();
-    recalcAll();
-  });
+  loadData();
 });
-
