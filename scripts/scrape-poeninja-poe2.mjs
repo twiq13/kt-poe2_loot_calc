@@ -1,13 +1,35 @@
+// scripts/scrape-poeninja-poe2.mjs
 import fs from "fs";
 import { chromium } from "playwright";
 
-const LEAGUE = process.env.LEAGUE || "standard";
+const LEAGUE = process.env.LEAGUE || "standard"; // ex: "vaal" ou "standard"
 const URL = `https://poe.ninja/poe2/economy/${LEAGUE}/currency`;
 
-function firstNumber(str) {
-  if (!str) return null;
-  const m = String(str).replace(",", ".").match(/[0-9]+(\.[0-9]+)?/);
-  return m ? Number(m[0]) : null;
+// "2.5k" => 2500, "800" => 800, "1.2" => 1.2
+function parseCompactNumber(s) {
+  if (!s) return null;
+  const t = String(s).trim().toLowerCase().replace(/,/g, ".");
+  const m = t.match(/^([0-9]+(\.[0-9]+)?)(k)?$/i);
+  if (!m) return null;
+  let n = Number(m[1]);
+  if (m[3]) n *= 1000;
+  return Number.isFinite(n) ? n : null;
+}
+
+function stripTags(html) {
+  return String(html || "")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// essaie de récupérer le nom de la currency du logo dans la cellule Value
+function extractIconNameFromHtml(html) {
+  // alt="Exalted Orb" / title="Divine Orb" etc.
+  const alt = html.match(/alt="([^"]+)"/i)?.[1];
+  const title = html.match(/title="([^"]+)"/i)?.[1];
+  return (alt || title || null);
 }
 
 (async () => {
@@ -18,21 +40,43 @@ function firstNumber(str) {
   });
 
   console.log("Opening:", URL);
+
   await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-  // Attendre que le tableau se charge (SPA)
-  await page.waitForSelector("table", { timeout: 60000 });
-  await page.waitForTimeout(3000);
+  // Attendre que le tableau SPA se charge vraiment
+  await page.waitForSelector("table thead th", { timeout: 60000 });
+  await page.waitForSelector("table tbody tr", { timeout: 60000 });
+  await page.waitForTimeout(2500);
 
-  const rows = await page.evaluate(() => {
-    const trs = Array.from(document.querySelectorAll("table tbody tr"));
-    return trs.map(tr => {
-      const tds = Array.from(tr.querySelectorAll("td"));
-      const name = (tds[0]?.innerText || "").trim();
-      const rowText = (tr.innerText || "").replace(/\s+/g, " ").trim();
-      return { name, rowText };
-    }).filter(x => x.name);
+  // Trouver l’index de la colonne "Value"
+  const valueColIndex = await page.evaluate(() => {
+    const ths = Array.from(document.querySelectorAll("table thead th"));
+    const idx = ths.findIndex(
+      (th) => (th.innerText || "").trim().toLowerCase() === "value"
+    );
+    return idx;
   });
+
+  console.log("Value column index =", valueColIndex);
+
+  if (valueColIndex < 0) {
+    console.error('Impossible de trouver la colonne "Value".');
+    process.exitCode = 1;
+    await browser.close();
+    return;
+  }
+
+  // Extraire les lignes : name + HTML de la cellule Value
+  const rows = await page.evaluate((valueIdx) => {
+    const trs = Array.from(document.querySelectorAll("table tbody tr"));
+    return trs.slice(0, 400).map((tr) => {
+      const tds = Array.from(tr.querySelectorAll("td"));
+      const name = (tds[0]?.innerText || "").replace(/\s+/g, " ").trim();
+      const valueHtml = tds[valueIdx]?.innerHTML || "";
+      const valueText = (tds[valueIdx]?.innerText || "").replace(/\s+/g, " ").trim();
+      return { name, valueHtml, valueText };
+    }).filter(r => r.name);
+  }, valueColIndex);
 
   await browser.close();
 
@@ -41,21 +85,27 @@ function firstNumber(str) {
     process.exit(1);
   }
 
-  // Exemple de parsing : on cherche "x Divine" et "y Exalted"
-  const parsed = rows.map(r => {
-    const divineMatch = r.rowText.match(/([0-9]+([.,][0-9]+)?)\s*Divine/i);
-    const exaltMatch  = r.rowText.match(/([0-9]+([.,][0-9]+)?)\s*Exalted/i);
+  // Parse rows -> {name, amount, unit}
+  const lines = rows.map((r) => {
+    // On prend en priorité innerText (plus fiable), sinon stripTags(html)
+    const txt = r.valueText || stripTags(r.valueHtml);
+
+    // Trouver le premier token qui ressemble à un nombre (ex: "2.5k" / "800" / "5.3")
+    const token = txt.split(" ").find((x) => /^[0-9]/.test(x)) || null;
+    const amount = parseCompactNumber(token);
+
+    const unit = extractIconNameFromHtml(r.valueHtml); // peut être null si pas d'alt/title
 
     return {
       name: r.name,
-      divinePrice: firstNumber(divineMatch?.[1]),
-      exaltPrice: firstNumber(exaltMatch?.[1]),
+      amount,
+      unit,
     };
-  }).filter(x => x.divinePrice !== null || x.exaltPrice !== null);
+  }).filter(x => x.amount !== null);
 
-  if (!parsed.length) {
-    console.error("Lignes trouvées mais aucun prix parsé.");
-    console.error("Exemple rowText:", rows[0]?.rowText);
+  if (!lines.length) {
+    console.error("Lignes trouvées mais aucun montant parsé.");
+    console.error("Exemple:", rows[0]);
     process.exit(1);
   }
 
@@ -63,11 +113,11 @@ function firstNumber(str) {
     updatedAt: new Date().toISOString(),
     league: LEAGUE,
     source: URL,
-    lines: parsed
+    lines,
   };
 
   fs.mkdirSync("data", { recursive: true });
   fs.writeFileSync("data/prices.json", JSON.stringify(out, null, 2), "utf8");
 
-  console.log(`OK -> ${parsed.length} currencies écrites dans data/prices.json`);
+  console.log(`OK -> ${lines.length} currencies écrites dans data/prices.json`);
 })();
