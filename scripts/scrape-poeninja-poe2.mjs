@@ -225,7 +225,7 @@ async function scrapeSection(page, sectionKey, url) {
     { key: "omens", slugs: ["omens"] },
     { key: "expedition", slugs: ["expedition"] },
     { key: "liquidEmotions", slugs: ["liquid-emotions", "liquidemotions"] },
-    { key: "catalyst", slugs: ["catalyst", "catalysts"] },
+    { key: "catalyst", slugs: ["breach-catalyst", "catalysts"] },
   ];
 
   const outSections = {};
