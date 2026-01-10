@@ -1,6 +1,6 @@
 import fs from "fs";
 
-const LEAGUE = "standard"; // mets "vaal" si tu veux la ligue vaal
+const LEAGUE = "vaal"; // mets "vaal" si tu veux la ligue vaal
 const URL = `https://poe.ninja/poe2/economy/${LEAGUE}/currency`;
 
 function stripTags(html) {
