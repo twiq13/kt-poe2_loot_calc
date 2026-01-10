@@ -217,7 +217,7 @@ async function scrapeSection(page, sectionKey, url) {
     { key: "fragments", slugs: ["fragments"] },
     { key: "abyssalBones", slugs: ["abyssal-bones", "abyssalbones"] },
     { key: "uncutGems", slugs: ["uncut-gems", "uncutgems"] },
-    { key: "lineageGems", slugs: ["lineage-gems", "lineagegems"] },
+    { key: "lineageGems", slugs: ["lineage-support-gems", "lineagegems"] },
     { key: "essences", slugs: ["essences"] },
     { key: "soulCores", slugs: ["soul-cores", "soulcores"] },
     { key: "idols", slugs: ["idols"] },
