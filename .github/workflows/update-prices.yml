@@ -14,7 +14,7 @@ jobs:
         
       - name: Fetch PoE2 currency JSON (with retry + logs)
         run: |
-          LEAGUE="standard"
+          LEAGUE="Standard"
           URL="https://poe.ninja/poe2/api/data/currencyoverview?league=${LEAGUE}&type=Currency"
           echo "Fetching: $URL"
 
