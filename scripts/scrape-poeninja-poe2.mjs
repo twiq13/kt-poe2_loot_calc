@@ -4,36 +4,28 @@ import { chromium } from "playwright";
 
 const LEAGUE = (process.env.LEAGUE || "vaal").toLowerCase();
 const BASE = "https://poe.ninja";
-const ECONOMY_BASE = `${BASE}/poe2/economy/${LEAGUE}`;
 
-// --- Sections UI (tabs) ---
+// Toutes les sections UI (slug poe.ninja + id pour ton app)
 const SECTIONS = [
-  { key: "currency",       label: "Currency",        path: "currency" },
-  { key: "fragments",      label: "Fragments",       path: "fragments" },
-  { key: "abyssalBones",   label: "Abyssal Bones",   path: "abyssal-bones" },
-  { key: "uncutGems",      label: "Uncut Gems",      path: "uncut-gems" },
-  { key: "lineageGems",    label: "Lineage Gems",    path: "lineage-support-gems" },
-  { key: "essences",       label: "Essences",        path: "essences" },
-  { key: "soulCores",      label: "Soul Cores",      path: "soul-cores" },
-  { key: "idols",          label: "Idols",           path: "idols" },
-  { key: "runes",          label: "Runes",           path: "runes" },
-  { key: "omens",          label: "Omens",           path: "omens" },
-  { key: "expedition",     label: "Expedition",      path: "expedition" },
-  { key: "liquidEmotions", label: "Liquid Emotions", path: "liquid-emotions" },
-  { key: "catalyst",       label: "Catalyst",        path: "breach-catalyst" },
+  { id: "currency",        label: "Currency",        slug: "currency" },
+  { id: "fragments",       label: "Fragments",       slug: "fragments" },
+  { id: "abyssalBones",    label: "Abyssal Bones",   slug: "abyssal-bones" },
+  { id: "uncutGems",       label: "Uncut Gems",      slug: "uncut-gems" },
+  { id: "lineageGems",     label: "Lineage Gems",    slug: "lineage-support-gems" },
+  { id: "essences",        label: "Essences",        slug: "essences" },
+  { id: "soulCores",       label: "Soul Cores",      slug: "soul-cores" },
+  { id: "idols",           label: "Idols",           slug: "idols" },
+  { id: "runes",           label: "Runes",           slug: "runes" },
+  { id: "omens",           label: "Omens",           slug: "omens" },
+  { id: "expedition",      label: "Expedition",      slug: "expedition" },
+  { id: "liquidEmotions",  label: "Liquid Emotions", slug: "liquid-emotions" },
+  { id: "catalyst",        label: "Catalyst",        slug: "breach-catalyst" },
 ];
 
-// ---------- utils ----------
 function cleanName(name) {
   return String(name || "").replace(/\s*WIKI\s*$/i, "").trim();
 }
-function normalizeUrl(u) {
-  if (!u) return "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("//")) return "https:" + u;
-  if (u.startsWith("/")) return BASE + u;
-  return u;
-}
+
 function parseCompactNumber(s) {
   if (!s) return null;
   const t = String(s).trim().toLowerCase().replace(/,/g, ".");
@@ -44,199 +36,189 @@ function parseCompactNumber(s) {
   if (m[3] === "m") n *= 1000000;
   return Number.isFinite(n) ? n : null;
 }
-async function findValueColIndex(page) {
-  return await page.evaluate(() => {
-    const ths = Array.from(document.querySelectorAll("table thead th"));
-    return ths.findIndex(th => (th.innerText || "").trim().toLowerCase() === "value");
-  });
+
+function normalizeUrl(u) {
+  if (!u) return "";
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  if (u.startsWith("//")) return "https:" + u;
+  if (u.startsWith("/")) return BASE + u;
+  return u;
 }
 
-// Detect unit quickly from value cell (text + icons)
-function detectUnitFromText(txt) {
-  const t = (txt || "").toLowerCase();
-  if (t.includes("divine")) return "Divine Orb";
-  if (t.includes("chaos")) return "Chaos Orb";
-  if (t.includes("exalted")) return "Exalted Orb";
-  return "";
-}
-
-// ---------- scrape one section ----------
-async function scrapeSection(page, sec) {
-  const url = `${ECONOMY_BASE}/${sec.path}`;
-  console.log(`=== Section: ${sec.label} -> ${url}`);
+// Scrape une page (1 section)
+async function scrapeSection(page, section) {
+  const url = `${BASE}/poe2/economy/${LEAGUE}/${section.slug}`;
+  console.log(`=== Section: ${section.label} -> ${url}`);
 
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-  await page.waitForSelector("table thead th", { timeout: 20000 });
-  await page.waitForSelector("table tbody tr", { timeout: 20000 });
+  // attendre table
+  await page.waitForSelector("table thead th", { timeout: 60000 });
+  await page.waitForSelector("table tbody tr", { timeout: 60000 });
+  await page.waitForTimeout(800);
 
-  const valueColIndex = await findValueColIndex(page);
+  const valueColIndex = await page.evaluate(() => {
+    const ths = Array.from(document.querySelectorAll("table thead th"));
+    return ths.findIndex(th => (th.innerText || "").trim().toLowerCase() === "value");
+  });
+
   if (valueColIndex < 0) {
-    console.log(`Skip ${sec.key}: cannot find Value column.`);
-    return { url, lines: [] };
+    console.log("!! Value column not found, skipping section.");
+    return { url, rows: [], valueColIndex: -1 };
   }
 
-  const rows = await page.$$("table tbody tr");
-  const max = Math.min(rows.length, 400);
+  const rows = await page.evaluate(({ valueColIndex }) => {
+    const out = [];
 
-  const lines = [];
-  for (let i = 0; i < max; i++) {
-    const tr = rows[i];
-    const tds = await tr.$$("td");
-    if (!tds.length || tds.length <= valueColIndex) continue;
+    const getText = (el) => (el?.innerText || "").replace(/\s+/g, " ").trim();
+    const norm = (u) => u || "";
 
-    // Name + item icon
-    const nameRaw = ((await tds[0].innerText()) || "").replace(/\s+/g, " ").trim();
-    const name = cleanName(nameRaw);
-    if (!name) continue;
+    const trs = Array.from(document.querySelectorAll("table tbody tr"));
+    for (const tr of trs) {
+      const tds = Array.from(tr.querySelectorAll("td"));
+      if (!tds.length || tds.length <= valueColIndex) continue;
 
-    let icon = "";
-    const img0 = await tds[0].$("img");
-    if (img0) icon = normalizeUrl((await img0.getAttribute("src")) || "");
+      const nameRaw = getText(tds[0]);
+      const name = nameRaw;
+      if (!name) continue;
 
-    // Value cell: amount + unit text
-    const valueText = ((await tds[valueColIndex].innerText()) || "").replace(/\s+/g, " ").trim();
-    const token = valueText.split(" ").find(x => /^[0-9]/.test(x)) || null;
-    const amount = parseCompactNumber(token);
+      const icon = tds[0].querySelector("img")?.getAttribute("src") || "";
 
-    const unit = detectUnitFromText(valueText);
+      const vCell = tds[valueColIndex];
 
-    // Value cell: unit icon (usually there is an <img> for currency)
-    let unitIcon = "";
-    const imgs = await tds[valueColIndex].$$("img");
-    if (imgs?.length) {
-      // often first/second img corresponds to the unit currency icon
-      const src = await imgs[0].getAttribute("src");
-      unitIcon = normalizeUrl(src || "");
+      // On récupère le 1er nombre visible (amount)
+      const vText = getText(vCell);
+      const token = vText.split(" ").find(x => /^[0-9]/.test(x)) || "";
+      const amount = token;
+
+      // unit + unitIcon (souvent l’icône dans la cellule value)
+      // On prend le dernier img de la cellule Value comme "unit"
+      const imgs = Array.from(vCell.querySelectorAll("img"));
+      const unitIcon = imgs.length ? (imgs[imgs.length - 1].getAttribute("src") || "") : "";
+
+      // On tente de lire un "alt/title/aria-label" pour obtenir le nom de l’unité
+      const unit =
+        imgs.length
+          ? (imgs[imgs.length - 1].getAttribute("alt")
+            || imgs[imgs.length - 1].getAttribute("title")
+            || imgs[imgs.length - 1].getAttribute("aria-label")
+            || "")
+          : "";
+
+      out.push({
+        name,
+        icon: norm(icon),
+        amount,
+        unit: unit || "",       // peut être vide selon poe.ninja
+        unitIcon: norm(unitIcon)
+      });
     }
 
-    lines.push({
-      section: sec.key,
-      name,
-      icon,
-      amount: amount ?? null,
-      unit: unit || "",
-      unitIcon: unitIcon || "",
-      exaltedValue: null, // will be computed after
-    });
-  }
+    return out;
+  }, { valueColIndex });
 
-  console.log(`Done: ${sec.key} rows=${lines.length}`);
-  return { url, lines };
+  // Parse numbers + clean
+  const parsed = rows.map(r => ({
+    section: section.id,
+    name: cleanName(r.name),
+    icon: normalizeUrl(r.icon),
+    amount: parseCompactNumber(r.amount),
+    unit: cleanName(r.unit || ""),
+    unitIcon: normalizeUrl(r.unitIcon),
+    exaltedValue: null
+  })).filter(x => x.name && x.amount !== null);
+
+  return { url, rows: parsed, valueColIndex };
 }
 
-// ---------- compute conversions ----------
-function computeRatesAndExalted(allLines) {
-  // We only trust rates from "currency" section
-  const cur = allLines.filter(x => x.section === "currency");
-
-  const byName = new Map(cur.map(x => [x.name.toLowerCase(), x]));
-
-  // Base icon
-  const exRow = byName.get("exalted orb");
-  const divineRow = byName.get("divine orb");
-
-  // exRow amount is usually in Chaos (meaning: 1 Exalted = X Chaos)
-  let chaosPerEx = null;
-  if (exRow?.unit?.toLowerCase() === "chaos orb" && exRow.amount > 0) {
-    chaosPerEx = exRow.amount;
-  }
-
-  // divineRow usually in Chaos (meaning: 1 Divine = X Chaos)
-  // then exPerDivine = divineChaos / chaosPerEx
-  let exPerDivine = null;
-  if (divineRow?.unit?.toLowerCase() === "chaos orb" && chaosPerEx && chaosPerEx > 0 && divineRow.amount > 0) {
-    exPerDivine = divineRow.amount / chaosPerEx;
-  }
-  // if poe.ninja ever shows Divine in Ex directly:
-  if (divineRow?.unit?.toLowerCase() === "exalted orb" && divineRow.amount > 0) {
-    exPerDivine = divineRow.amount;
-  }
-
-  // Compute exaltedValue for every line
-  for (const it of allLines) {
-    const u = (it.unit || "").toLowerCase();
-
-    if (u === "exalted orb") {
-      it.exaltedValue = it.amount ?? null;
-      continue;
-    }
-
-    if (u === "chaos orb" && chaosPerEx && chaosPerEx > 0) {
-      it.exaltedValue = (it.amount ?? 0) / chaosPerEx;
-      continue;
-    }
-
-    if (u === "divine orb" && exPerDivine && exPerDivine > 0) {
-      it.exaltedValue = (it.amount ?? 0) * exPerDivine;
-      continue;
-    }
-
-    it.exaltedValue = null;
-  }
-
-  return {
-    chaosPerEx,
-    exPerDivine,
-    baseIcon: exRow?.icon || "",
-    divineIcon: divineRow?.icon || "",
-  };
-}
-
-// ---------- main ----------
 (async () => {
   const browser = await chromium.launch({ headless: true });
 
   const page = await browser.newPage({
     userAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-    viewport: { width: 1400, height: 900 },
   });
 
-  // Speed: block heavy types
+  // ⚡ speed: bloquer images/fonts/styles inutiles (on garde quand même le HTML + quelques images en src)
   await page.route("**/*", (route) => {
-    const type = route.request().resourceType();
-    if (type === "font" || type === "media") return route.abort();
-    route.continue();
+    const rt = route.request().resourceType();
+    if (rt === "font" || rt === "media") return route.abort();
+    return route.continue();
   });
 
-  const sectionsOut = [];
-  let allLines = [];
+  const allLines = [];
+  let baseIcon = "";
+  let currencyUrl = "";
 
   for (const sec of SECTIONS) {
-    const r = await scrapeSection(page, sec);
-    sectionsOut.push({
-      key: sec.key,
-      label: sec.label,
-      url: r.url,
-      count: r.lines.length,
-    });
-    allLines = allLines.concat(r.lines);
+    const { url, rows } = await scrapeSection(page, sec);
+    if (sec.id === "currency") currencyUrl = url;
+
+    // baseIcon = icône de Exalted Orb (uniquement dans currency)
+    if (sec.id === "currency" && !baseIcon) {
+      const exRow = rows.find(x => x.name.toLowerCase() === "exalted orb");
+      baseIcon = exRow?.icon || "";
+    }
+
+    allLines.push(...rows);
+    console.log(`Done: rows=${rows.length}`);
   }
 
   await browser.close();
 
-  const rates = computeRatesAndExalted(allLines);
+  // ===== POST-PROCESS: calculer exaltedValue pour TOUT =====
+  // 1 Ex = X Chaos => pris depuis "Exalted Orb" si unité Chaos
+  const currencyLines = allLines.filter(x => x.section === "currency");
+
+  const exRow = currencyLines.find(x => x.name.toLowerCase() === "exalted orb");
+  const divRow = currencyLines.find(x => x.name.toLowerCase() === "divine orb");
+
+  let exChaos = null;      // Chaos per Ex
+  let divineInEx = null;   // Ex per Divine
+
+  if (exRow && exRow.unit.toLowerCase() === "chaos orb" && exRow.amount > 0) {
+    exChaos = exRow.amount;
+  }
+
+  // Divine -> Ex : soit direct, soit via chaos / exChaos
+  if (divRow) {
+    if (divRow.unit.toLowerCase() === "exalted orb" && divRow.amount > 0) {
+      divineInEx = divRow.amount;
+    } else if (divRow.unit.toLowerCase() === "chaos orb" && divRow.amount > 0 && exChaos) {
+      divineInEx = divRow.amount / exChaos;
+    }
+  }
+
+  // Calcul exaltedValue item par item
+  for (const it of allLines) {
+    const u = (it.unit || "").toLowerCase();
+
+    if (u === "exalted orb") {
+      it.exaltedValue = it.amount;
+    } else if (u === "chaos orb" && exChaos) {
+      it.exaltedValue = it.amount / exChaos;
+    } else if (u === "divine orb" && divineInEx) {
+      it.exaltedValue = it.amount * divineInEx;
+    } else {
+      it.exaltedValue = null;
+    }
+  }
 
   const out = {
     updatedAt: new Date().toISOString(),
     league: LEAGUE,
-    sourceBase: ECONOMY_BASE,
+    source: currencyUrl || `${BASE}/poe2/economy/${LEAGUE}/currency`,
     base: "Exalted Orb",
-    baseIcon: rates.baseIcon,
-    divineIcon: rates.divineIcon,
-    chaosPerEx: rates.chaosPerEx,     // 1 Ex = X Chaos
-    divineInEx: rates.exPerDivine,    // 1 Div = X Ex
-    sections: sectionsOut,
-    lines: allLines,
+    baseIcon: baseIcon || "",
+    exChaos: exChaos ?? null,
+    divineInEx: divineInEx ?? null,
+    sections: SECTIONS.map(s => ({ id: s.id, label: s.label, slug: s.slug })),
+    lines: allLines
   };
 
   fs.mkdirSync("data", { recursive: true });
   fs.writeFileSync("data/prices.json", JSON.stringify(out, null, 2), "utf8");
 
-  const total = allLines.length;
-  const ok = allLines.filter(x => typeof x.exaltedValue === "number").length;
-
-  console.log(`SAVED data/prices.json -> sections=${sectionsOut.length} items=${total} exaltedComputed=${ok}`);
-  console.log(`Rates: 1 Ex = ${rates.chaosPerEx ?? "?"} Chaos | 1 Div = ${rates.exPerDivine ?? "?"} Ex`);
+  const exFound = allLines.filter(x => typeof x.exaltedValue === "number").length;
+  console.log(`OK -> sections=${SECTIONS.length} items=${allLines.length} exaltedValue=${exFound} exChaos=${exChaos} divineInEx=${divineInEx}`);
 })();
