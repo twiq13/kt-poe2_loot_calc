@@ -3,7 +3,7 @@ name: Update PoE2 prices
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"
+    - cron: "0 */6 * * *"  # toutes les 6h
 
 permissions:
   contents: write
@@ -20,8 +20,16 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Fetch + build prices.json
-        run: node scripts/update-prices.mjs
+      - name: Install Playwright
+        run: |
+          npm init -y
+          npm i playwright
+          npx playwright install --with-deps chromium
+
+      - name: Scrape poe.ninja PoE2 and build prices.json
+        env:
+          LEAGUE: standard
+        run: node scripts/scrape-poeninja-poe2.mjs
 
       - name: Commit & push if changed
         run: |
