@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>PoE II Farm Calculator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>PoE II Farm Calculette</h1>
+
+<h2>Investissement (chaos)</h2>
+<input type="number" id="maps" placeholder="Nombre de maps" value="10">
+
+<input type="number" id="invest_tablets" placeholder="Tablets">
+<input type="number" id="invest_omen" placeholder="Omen Rarity">
+<input type="number" id="invest_maps" placeholder="Achat Maps">
+
+<!-- ZONE PRINCIPALE -->
+<div class="layout">
+
+  <!-- COLONNE GAUCHE : POE NINJA -->
+  <aside class="currency-panel">
+    <h3>Currencies</h3>
+    <div id="currencyList"></div>
+    <div style="margin-bottom:10px;">
+  <input id="leagueInput" value="vaal" style="width:100%;padding:6px;">
+  <button onclick="loadCurrencies()" style="width:100%;margin-top:6px;">Refresh prices</button>
+</div>
+
+  </aside>
+
+  <!-- COLONNE DROITE : LOOT -->
+  <main class="app">
+    <h2>Loot</h2>
+
+    <table class="loot-table">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Prix (ex)</th>
+          <th>Quantité</th>
+        </tr>
+      </thead>
+      <tbody id="lootBody"></tbody>
+    </table>
+
+    <div class="loot-actions">
+      <button onclick="addLootLine()">➕ Ajouter une ligne</button>
+      <button onclick="addManualLine()">➕ Ligne manuelle</button>
+    </div>
+  </main>
+</div>
+
+<!-- LISTE DÉROULANTE -->
+<datalist id="currencyDatalist"></datalist>
+
+
+<h2>Résultats</h2>
+<p>Total investissement : <span id="totalInvest">0</span> exalt</p>
+<p>Total loot : <span id="totalLoot">0</span> exalt</p>
+<p>Gain : <span id="gain">0</span> exalt</p>
+<p>ROI : <span id="roi">0</span> %</p>
+
+<div id="fetchStatus" style="background:#222;color:#0f0;padding:10px;margin-top:15px;white-space:pre-wrap;">
+Fetch status: attente...
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
