@@ -1,146 +1,138 @@
-let currencies = [];
-let currencyMap = new Map();      // nameLower -> currency
-let exaltRates = new Map();       // nameLower -> value in Exalted Orb
-let baseName = "Exalted Orb";     // currency de référence affichée
-let baseIcon = "";               // icône exalt
+let items = [];
+let itemMap = new Map();
 
+let exaltIcon = "";
+let divineIcon = "";
+let divineInEx = null; // 1 Divine = X Ex
+
+let activeTab = "currency";
+
+// ---------- helpers ----------
 function cleanName(name) {
   return String(name || "").replace(/\s*WIKI\s*$/i, "").trim();
 }
-
 function setStatus(msg) {
-  const box = document.getElementById("fetchStatus");
-  if (box) box.textContent = msg;
+  const el = document.getElementById("fetchStatus");
+  if (el) el.textContent = msg;
   console.log(msg);
 }
-
-function setText(id, value) {
+function num(id) {
   const el = document.getElementById(id);
-  if (el) el.textContent = value;
-}
-
-function numInput(id) {
-  const el = document.getElementById(id);
-  if (!el) return 0;
-  const v = Number(el.value);
+  const v = el ? Number(el.value) : 0;
   return Number.isFinite(v) ? v : 0;
 }
+function setHTML(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
+  }[m]));
+}
 
-// -----------------------
-// LOAD prices.json
-// -----------------------
-async function loadCurrencies() {
+// ---------- format totals (Ex/Div with icons) ----------
+function formatDual(exValue) {
+  const ex = Number(exValue || 0);
+  const div = (divineInEx && divineInEx > 0) ? (ex / divineInEx) : 0;
+
+  return `
+    <span class="dual">
+      <span>${ex.toFixed(2)}</span>${exaltIcon ? `<img class="pIcon" src="${exaltIcon}" alt="">` : ""}
+      <span class="sep">/</span>
+      <span>${div.toFixed(2)}</span>${divineIcon ? `<img class="pIcon" src="${divineIcon}" alt="">` : ""}
+    </span>
+  `;
+}
+
+// ---------- load prices.json ----------
+async function loadData() {
   try {
-    setStatus("Fetch status: lecture data/prices.json...");
+    setStatus("Status: loading data/prices.json...");
 
     const res = await fetch("./data/prices.json?ts=" + Date.now(), { cache: "no-store" });
     const data = await res.json();
 
-    currencies = (data.lines || []).map(c => ({
-      name: cleanName(c.name),
-      amount: Number(c.amount || 0),
-      unit: c.unit || "",
-      icon: c.icon || "",
-      unitIcon: c.unitIcon || ""
+    // we keep original amount/unit for LEFT list
+    items = (data.lines || []).map(x => ({
+      name: cleanName(x.name),
+      amount: Number(x.amount ?? 0),
+      unit: cleanName(x.unit || ""),
+      exaltedValue: Number(x.exaltedValue ?? 0),
+      icon: x.icon || ""
     }));
 
-    currencyMap = new Map(currencies.map(c => [c.name.toLowerCase(), c]));
+    itemMap = new Map(items.map(x => [x.name.toLowerCase(), x]));
 
-    // trouver l'icône exalt si dispo
-    const exalt = currencyMap.get(baseName.toLowerCase());
-    baseIcon = exalt?.icon || exalt?.unitIcon || "";
+    // base icon (exalted)
+    exaltIcon = data.baseIcon || itemMap.get("exalted orb")?.icon || "";
 
-    // construire les conversions vers Exalted
-    buildExaltRates();
+    // divine icon & rate (from JSON row)
+    const divineRow = itemMap.get("divine orb");
+    divineIcon = divineRow?.icon || "";
+    divineInEx = divineRow?.exaltedValue || null;
 
-    setStatus(`Fetch status: OK ✅ currencies=${currencies.length} (maj: ${data.updatedAt || "?"})`);
-    renderCurrencyPanel();
+    setStatus(`Status: OK ✅ items=${items.length}`);
+
     fillDatalist();
-    refreshAllLootPrices();  // recalcul après load
-    calculerTout();
+    bindTabs();
+    renderLeftList();
+    refreshAllLootPrices();
+    recalcAll();
+    loadState();
 
   } catch (e) {
-    setStatus("Fetch status: ERREUR ❌ " + e.toString());
+    setStatus("Status: ERROR ❌ " + e.toString());
   }
 }
 
-// -----------------------
-// Build conversion graph to Exalted
-// Each row means: 1 "name" = amount * "unit"
-// -----------------------
-function buildExaltRates() {
-  exaltRates = new Map();
-  const start = baseName.toLowerCase();
-  exaltRates.set(start, 1);
+// ---------- tabs skeleton ----------
+function bindTabs() {
+  document.querySelectorAll(".tab").forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeTab = btn.dataset.tab;
 
-  // edges
-  // A -> B with mult m : 1A = m B
-  const list = currencies
-    .filter(x => x.name && x.unit && x.amount > 0)
-    .map(x => ({
-      A: x.name.toLowerCase(),
-      B: cleanName(x.unit).toLowerCase(),
-      m: x.amount
-    }));
-
-  // BFS propagation
-  let changed = true;
-  for (let iter = 0; iter < 50 && changed; iter++) {
-    changed = false;
-
-    for (const e of list) {
-      const a = exaltRates.get(e.A);
-      const b = exaltRates.get(e.B);
-
-      // if B known => A = m * B
-      if (b !== undefined && a === undefined) {
-        exaltRates.set(e.A, e.m * b);
-        changed = true;
-      }
-
-      // if A known => B = (1/m) * A
-      if (a !== undefined && b === undefined) {
-        exaltRates.set(e.B, (1 / e.m) * a);
-        changed = true;
-      }
-    }
-  }
+      // For now, only "currency" is real. Others: show placeholder.
+      renderLeftList();
+    };
+  });
 }
 
-// -----------------------
-// LEFT panel
-// -----------------------
-function renderCurrencyPanel() {
+// ---------- left list ----------
+function renderLeftList() {
   const panel = document.getElementById("currencyList");
-  if (!panel) return;
-
   const q = (document.getElementById("currencySearch")?.value || "").trim().toLowerCase();
+
+  if (!panel) return;
   panel.innerHTML = "";
 
-  if (!currencies.length) {
-    panel.innerHTML = "<p style='color:#aaa'>Aucune donnée dans data/prices.json</p>";
+  if (activeTab !== "currency") {
+    panel.innerHTML = `<div style="color:#bbb;padding:10px;">Coming soon: ${escapeHtml(activeTab)} (UI ready)</div>`;
     return;
   }
 
-  const filtered = currencies
-    .filter(c => c.name.toLowerCase().includes(q))
+  const filtered = items
+    .filter(x => x.name.toLowerCase().includes(q))
     .slice(0, 300);
 
-  filtered.forEach(c => {
-    const div = document.createElement("div");
-    div.className = "currency-item";
-    div.style.cursor = "pointer";
+  filtered.forEach(x => {
+    const row = document.createElement("div");
+    row.className = "currency-item";
 
-    div.innerHTML = `
-      <span style="display:flex;gap:8px;align-items:center;">
-        ${c.icon ? `<img src="${c.icon}" style="width:18px;height:18px;">` : ""}
-        ${c.name}
-      </span>
-      <small>${c.amount} ${c.unit || ""}</small>
+    const rightText = x.unit ? `${x.amount} ${x.unit}` : `${x.amount}`;
+
+    row.innerHTML = `
+      <div class="cLeft">
+        ${x.icon ? `<img class="cIcon" src="${x.icon}" alt="">` : ""}
+        <span>${escapeHtml(x.name)}</span>
+      </div>
+      <small>${escapeHtml(rightText)}</small>
     `;
 
-    div.addEventListener("click", () => addLootLineWithName(c.name));
-    panel.appendChild(div);
+    row.addEventListener("click", () => addLootLineWithName(x.name));
+    panel.appendChild(row);
   });
 }
 
@@ -149,16 +141,14 @@ function fillDatalist() {
   if (!dl) return;
 
   dl.innerHTML = "";
-  currencies.forEach(c => {
+  items.forEach(x => {
     const opt = document.createElement("option");
-    opt.value = c.name;
+    opt.value = x.name;
     dl.appendChild(opt);
   });
 }
 
-// -----------------------
-// LOOT rows
-// -----------------------
+// ---------- loot rows ----------
 function addLootLine() {
   const tr = document.createElement("tr");
   tr.className = "lootRow";
@@ -167,21 +157,31 @@ function addLootLine() {
     <td>
       <div style="display:flex;align-items:center;gap:8px;">
         <input class="lootItem" list="currencyDatalist" placeholder="Item">
-        <img class="lootIcon" style="width:18px;height:18px;display:none;" alt="">
+        <img class="lootIcon" alt="">
       </div>
     </td>
     <td class="priceCell">
       <span class="lootPrice">0</span>
-      <img class="baseIcon" style="width:16px;height:16px;margin-left:6px;vertical-align:middle;display:none;" alt="">
+      <img class="baseIcon" alt="">
     </td>
     <td><input class="lootQty" type="number" value="0" min="0"></td>
-    <td><button type="button" class="deleteBtn" title="Supprimer">✖</button></td>
+    <td><button type="button" class="deleteBtn" title="Delete">✖</button></td>
   `;
 
   document.getElementById("lootBody").appendChild(tr);
 
   const itemInput = tr.querySelector(".lootItem");
   const qtyInput = tr.querySelector(".lootQty");
+  const delBtn = tr.querySelector(".deleteBtn");
+
+  // set base icon (exalted) next to price
+  const baseImg = tr.querySelector(".baseIcon");
+  if (exaltIcon) {
+    baseImg.src = exaltIcon;
+    baseImg.style.display = "inline-block";
+  } else {
+    baseImg.style.display = "none";
+  }
 
   itemInput.addEventListener("input", () => {
     updatePrice(itemInput);
@@ -189,24 +189,15 @@ function addLootLine() {
   });
 
   qtyInput.addEventListener("input", () => {
-    calculerTout();
+    recalcAll();
     saveState();
   });
 
-  tr.querySelector(".deleteBtn").addEventListener("click", () => {
+  delBtn.addEventListener("click", () => {
     tr.remove();
-    calculerTout();
+    recalcAll();
     saveState();
   });
-
-  // mettre l'icône de base (exalt) dans la cellule prix
-  const baseImg = tr.querySelector(".baseIcon");
-  if (baseIcon) {
-    baseImg.src = baseIcon;
-    baseImg.style.display = "inline-block";
-  } else {
-    baseImg.style.display = "none";
-  }
 
   return tr;
 }
@@ -215,7 +206,7 @@ function addLootLineWithName(name) {
   const tr = addLootLine();
   tr.querySelector(".lootItem").value = name;
   updatePrice(tr.querySelector(".lootItem"));
-  calculerTout();
+  recalcAll();
   saveState();
 }
 
@@ -224,27 +215,27 @@ function addManualLine() {
   tr.className = "lootRow manualRow";
 
   tr.innerHTML = `
-    <td><input class="lootItem" placeholder="Nom libre"></td>
+    <td><input class="lootItem" placeholder="Custom name"></td>
     <td><input class="manualPrice" type="number" value="0" min="0" step="0.01"></td>
     <td><input class="lootQty" type="number" value="0" min="0"></td>
-    <td><button type="button" class="deleteBtn" title="Supprimer">✖</button></td>
+    <td><button type="button" class="deleteBtn" title="Delete">✖</button></td>
   `;
 
   document.getElementById("lootBody").appendChild(tr);
 
   tr.querySelector(".deleteBtn").addEventListener("click", () => {
     tr.remove();
-    calculerTout();
+    recalcAll();
     saveState();
   });
 
   tr.querySelector(".manualPrice").addEventListener("input", () => {
-    calculerTout();
+    recalcAll();
     saveState();
   });
 
   tr.querySelector(".lootQty").addEventListener("input", () => {
-    calculerTout();
+    recalcAll();
     saveState();
   });
 
@@ -253,34 +244,16 @@ function addManualLine() {
   return tr;
 }
 
-// Convert any currency to Exalted using rates graph
-function getPriceInExalted(nameLower) {
-  // If we know rate directly: 1 name = rate Exalted
-  const r = exaltRates.get(nameLower);
-  return (r !== undefined) ? r : null;
-}
-
 function updatePrice(input) {
-  const name = (input.value || "").trim();
-  const nameLower = name.toLowerCase();
   const row = input.closest("tr");
+  if (row.classList.contains("manualRow")) { recalcAll(); return; }
 
-  if (row.classList.contains("manualRow")) {
-    calculerTout();
-    return;
-  }
+  const name = (input.value || "").trim().toLowerCase();
+  const found = itemMap.get(name);
 
-if (found) {
-  priceEl.textContent = Number(found.exaltedValue || 0).toFixed(2);
-} else {
-  priceEl.textContent = "0";
-}
-
+  const priceEl = row.querySelector(".lootPrice");
   const iconEl = row.querySelector(".lootIcon");
 
-  const found = currencyMap.get(nameLower);
-
-  // icon item
   if (found?.icon) {
     iconEl.src = found.icon;
     iconEl.style.display = "inline-block";
@@ -288,16 +261,11 @@ if (found) {
     iconEl.style.display = "none";
   }
 
-  // price in Exalted
-  const ex = getPriceInExalted(nameLower);
+  // Right table MUST be Exalted only
+  const ex = found ? Number(found.exaltedValue || 0) : 0;
+  priceEl.textContent = ex.toFixed(2);
 
-  if (ex !== null) {
-    priceEl.textContent = Number(ex).toFixed(2);
-  } else {
-    priceEl.textContent = "0";
-  }
-
-  calculerTout();
+  recalcAll();
 }
 
 function refreshAllLootPrices() {
@@ -308,57 +276,47 @@ function refreshAllLootPrices() {
   });
 }
 
-// -----------------------
-// CALCULS
-// -----------------------
-function calculerInvest() {
-  const maps = numInput("maps");
-  const costPerMap = numInput("costPerMap"); // en EXALTED
-  const total = maps * costPerMap;
-  setText("totalInvest", total.toFixed(2));
-  return total;
+// ---------- calculations ----------
+function calcInvestEx() {
+  const maps = num("maps");
+  const ppm = num("costPerMap"); // this is Exalted (user said cost per map)
+  return maps * ppm;
 }
 
-function calculerLoot() {
+function calcLootEx() {
   let total = 0;
-
   document.querySelectorAll("#lootBody tr").forEach(row => {
-    let price = 0;
-    let qty = 0;
-
+    const qty = Number(row.querySelector(".lootQty")?.value || 0);
     if (row.classList.contains("manualRow")) {
-      price = Number(row.querySelector(".manualPrice")?.value) || 0;
-      qty = Number(row.querySelector(".lootQty")?.value) || 0;
+      const p = Number(row.querySelector(".manualPrice")?.value || 0);
+      total += p * qty;
     } else {
-      price = Number(row.querySelector(".lootPrice")?.textContent) || 0;
-      qty = Number(row.querySelector(".lootQty")?.value) || 0;
+      const p = Number(row.querySelector(".lootPrice")?.textContent || 0);
+      total += p * qty;
     }
-
-    total += price * qty;
   });
-
-  setText("totalLoot", total.toFixed(2));
   return total;
 }
 
-function calculerTout() {
-  const invest = calculerInvest();
-  const loot = calculerLoot();
-  const gains = loot - invest;
-  setText("gain", gains.toFixed(2));
+function recalcAll() {
+  const invest = calcInvestEx();
+  const loot = calcLootEx();
+  const gain = loot - invest;
+
+  setHTML("totalInvest", formatDual(invest));
+  setHTML("totalLoot", formatDual(loot));
+  setHTML("gain", formatDual(gain));
 }
 
-// -----------------------
-// STORAGE
-// -----------------------
+// ---------- storage ----------
 function saveState() {
   const rows = [...document.querySelectorAll("#lootBody tr")].map(r => {
-    const isManual = r.classList.contains("manualRow");
+    const manual = r.classList.contains("manualRow");
     return {
-      manual: isManual,
+      manual,
       item: r.querySelector(".lootItem")?.value || "",
       qty: Number(r.querySelector(".lootQty")?.value || 0),
-      price: isManual ? Number(r.querySelector(".manualPrice")?.value || 0) : null
+      price: manual ? Number(r.querySelector(".manualPrice")?.value || 0) : null
     };
   });
 
@@ -367,106 +325,83 @@ function saveState() {
     costPerMap: document.getElementById("costPerMap")?.value ?? ""
   };
 
-  localStorage.setItem("poe2FarmState", JSON.stringify({ rows, invest }));
-}
-
-function clearLootRows() {
-  const body = document.getElementById("lootBody");
-  if (body) body.innerHTML = "";
+  localStorage.setItem("poe2FarmState", JSON.stringify({ rows, invest, activeTab }));
 }
 
 function loadState() {
   const raw = localStorage.getItem("poe2FarmState");
   if (!raw) return;
-
   try {
     const state = JSON.parse(raw);
 
     if (state?.invest) {
-      Object.keys(state.invest).forEach(k => {
-        const el = document.getElementById(k);
-        if (el) el.value = state.invest[k];
+      if (document.getElementById("maps")) document.getElementById("maps").value = state.invest.maps ?? "";
+      if (document.getElementById("costPerMap")) document.getElementById("costPerMap").value = state.invest.costPerMap ?? "";
+    }
+
+    if (state?.activeTab) activeTab = state.activeTab;
+
+    // restore tab UI
+    document.querySelectorAll(".tab").forEach(b => {
+      b.classList.toggle("active", b.dataset.tab === activeTab);
+    });
+
+    if (Array.isArray(state?.rows)) {
+      document.getElementById("lootBody").innerHTML = "";
+      state.rows.forEach(r => {
+        if (r.manual) {
+          const tr = addManualLine();
+          tr.querySelector(".lootItem").value = r.item || "";
+          tr.querySelector(".lootQty").value = r.qty ?? 0;
+          tr.querySelector(".manualPrice").value = r.price ?? 0;
+        } else {
+          const tr = addLootLine();
+          tr.querySelector(".lootItem").value = r.item || "";
+          tr.querySelector(".lootQty").value = r.qty ?? 0;
+          updatePrice(tr.querySelector(".lootItem"));
+        }
       });
     }
 
-    if (!state?.rows) return;
-
-    clearLootRows();
-
-    state.rows.forEach(r => {
-      if (r.manual) {
-        const tr = addManualLine();
-        tr.querySelector(".lootItem").value = r.item || "";
-        tr.querySelector(".lootQty").value = r.qty ?? 0;
-        tr.querySelector(".manualPrice").value = r.price ?? 0;
-      } else {
-        const tr = addLootLine();
-        tr.querySelector(".lootItem").value = r.item || "";
-        tr.querySelector(".lootQty").value = r.qty ?? 0;
-        updatePrice(tr.querySelector(".lootItem"));
-      }
-    });
-
-    calculerTout();
+    renderLeftList();
+    recalcAll();
   } catch {}
 }
 
-// -----------------------
-// RESET TEMPLATE
-// -----------------------
+// ---------- reset ----------
 function resetAll() {
   localStorage.removeItem("poe2FarmState");
 
-  ["maps", "costPerMap"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = "";
-  });
+  document.getElementById("maps").value = "10";
+  document.getElementById("costPerMap").value = "0";
 
-  clearLootRows();
-  const tr = addLootLine();
-  tr.querySelector(".lootItem").value = "";
-  tr.querySelector(".lootQty").value = 0;
-  tr.querySelector(".lootPrice").textContent = "0";
+  document.getElementById("lootBody").innerHTML = "";
+  addLootLine();
 
-  setText("totalInvest", "0");
-  setText("totalLoot", "0");
-  setText("gain", "0");
+  activeTab = "currency";
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === "currency"));
 
-  setStatus("Fetch status: reset ✅");
+  renderLeftList();
+  recalcAll();
   saveState();
+  setStatus("Status: reset ✅");
 }
-window.resetAll = resetAll;
 
-// -----------------------
-// INIT
-// -----------------------
+// ---------- init ----------
 document.addEventListener("DOMContentLoaded", () => {
-  const search = document.getElementById("currencySearch");
-  if (search) search.addEventListener("input", renderCurrencyPanel);
+  document.getElementById("currencySearch")?.addEventListener("input", renderLeftList);
 
   ["maps", "costPerMap"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener("input", () => { calculerTout(); saveState(); });
+    document.getElementById(id)?.addEventListener("input", () => { recalcAll(); saveState(); });
   });
+
+  document.getElementById("resetBtn")?.addEventListener("click", resetAll);
 
   window.addLootLine = addLootLine;
   window.addManualLine = addManualLine;
-  window.loadCurrencies = loadCurrencies;
 
-  loadCurrencies();
-  currencies = (data.lines || []).map(c => ({
-  name: cleanName(c.name),
-  exaltedValue: Number(c.exaltedValue ?? 0),
-  icon: c.icon || ""
-}));
-
-currencyMap = new Map(currencies.map(c => [c.name.toLowerCase(), c]));
-baseIcon = data.baseIcon || "";
-
-  loadState();
-
-  if (!document.querySelector("#lootBody tr")) addLootLine();
-  calculerTout();
+  loadData().then(() => {
+    if (!document.querySelector("#lootBody tr")) addLootLine();
+    recalcAll();
+  });
 });
-
-
