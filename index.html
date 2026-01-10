@@ -1,76 +1,80 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<title>PoE II Farm Calculator</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PoE II Farm Calculator</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
-<h1>PoE II Farm Calculette</h1>
-
-<h2>Investissement (chaos)</h2>
-<input type="number" id="maps" placeholder="Nombre de maps" value="10">
-<input type="number" id="invest_tablets" placeholder="Tablets">
-<input type="number" id="invest_omen" placeholder="Omen Rarity">
-<input type="number" id="invest_maps" placeholder="Achat Maps">
-
-<!-- ZONE PRINCIPALE -->
-<div class="layout">
-
-  <!-- COLONNE GAUCHE -->
-  <aside class="currency-panel">
-    <h3>Currencies</h3>
-
-    <input id="currencySearch" placeholder="Rechercher..." />
-
-    <div id="currencyList"></div>
-  </aside>
-
-  <!-- COLONNE DROITE -->
-  <main class="app">
-    <h2>Loot</h2>
-
-    <table class="loot-table">
-<thead>
-  <tr>
-    <th>Item</th>
-    <th>Prix</th>
-    <th>Quantité</th>
-    <th></th>
-  </tr>
-</thead>
-
-      <tbody id="lootBody"></tbody>
-    </table>
-
-    <div class="loot-actions">
-      <button onclick="addLootLine()">➕ Ajouter une ligne</button>
-      <button onclick="addManualLine()">➕ Ligne manuelle</button>
+  <!-- HEADER : titre + résultats en haut à droite -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>PoE II Farm Calculette</h1>
     </div>
-  </main>
 
-</div>
+    <div class="topbar-right results-panel">
+      <h3>Résultats</h3>
+      <p>Total investissement : <span id="totalInvest">0</span></p>
+      <p>Total loot : <span id="totalLoot">0</span></p>
+      <p>Gain : <span id="gain">0</span></p>
+      <p>ROI : <span id="roi">0</span> %</p>
 
-<!-- DATALIST AUTOCOMPLETE -->
-<datalist id="currencyDatalist"></datalist>
+      <button class="resetBtn" onclick="resetAll()">Reset all</button>
+    </div>
+  </div>
 
-<h2>Résultats</h2>
-<p>Total investissement : <span id="totalInvest">0</span></p>
-<p>Total loot : <span id="totalLoot">0</span></p>
-<p>Gain : <span id="gain">0</span></p>
-<p>ROI : <span id="roi">0</span> %</p>
-  
-<div style="margin-top:20px;">
-  <button class="resetBtn" onclick="resetAll()">Reset all</button>
-</div>
+  <h2>Investissement (chaos)</h2>
+  <div class="invest-row">
+    <input type="number" id="maps" placeholder="Nombre de maps" value="10">
+    <input type="number" id="invest_tablets" placeholder="Tablets">
+    <input type="number" id="invest_omen" placeholder="Omen Rarity">
+    <input type="number" id="invest_maps" placeholder="Achat Maps">
+  </div>
 
-<div id="fetchStatus" class="status">
-Fetch status: attente...
-</div>
+  <!-- ZONE PRINCIPALE -->
+  <div class="layout">
 
-<script src="app.js"></script>
+    <!-- COLONNE GAUCHE -->
+    <aside class="currency-panel">
+      <h3>Currencies</h3>
+      <input id="currencySearch" placeholder="Rechercher..." />
+      <div id="currencyList"></div>
+    </aside>
+
+    <!-- COLONNE DROITE -->
+    <main class="app">
+      <h2>Loot</h2>
+
+      <table class="loot-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Prix</th>
+            <th>Quantité</th>
+            <th class="th-delete"></th>
+          </tr>
+        </thead>
+        <tbody id="lootBody"></tbody>
+      </table>
+
+      <div class="loot-actions">
+        <button onclick="addLootLine()">➕ Ajouter une ligne</button>
+        <button onclick="addManualLine()">➕ Ligne manuelle</button>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- DATALIST AUTOCOMPLETE -->
+  <datalist id="currencyDatalist"></datalist>
+
+  <div id="fetchStatus" class="status">
+    Fetch status: attente...
+  </div>
+
+  <script src="app.js"></script>
 </body>
 </html>
-
