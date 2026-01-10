@@ -18,16 +18,56 @@ jobs:
           URL="https://poe.ninja/poe2/api/data/currencyoverview?league=${LEAGUE}&type=Currency"
           echo "Fetching: $URL"
 
-          # On force un User-Agent "navigateur"
-          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
-
-          # Tentatives avec retry natif curl + affichage code HTTP
           for i in 1 2 3 4 5; do
             echo "Attempt $i..."
 
             HTTP_CODE=$(curl -L --retry 3 --retry-all-errors --connect-timeout 15 --max-time 30 \
-              -A "$UA" -H "Accept: application/json" \
-              -sS -w "%{h
+              -A "Mozilla/5.0" -H "Accept: application/json" \
+              -sS -w "%{http_code}" -o /tmp/raw.json "$URL" || echo "curl_failed")
+
+            SIZE=$(wc -c < /tmp/raw.json || echo 0)
+            echo "HTTP code: $HTTP_CODE | Downloaded bytes: $SIZE"
+
+            if [ "$SIZE" -gt 200 ]; then
+              break
+            fi
+
+            sleep 3
+          done
+
+          echo "First 300 chars:"
+          head -c 300 /tmp/raw.json || true
+          echo ""
+
+          node -e "
+          const fs = require('fs');
+          const rawText = (fs.readFileSync('/tmp/raw.json','utf8') || '').trim();
+
+          if (!rawText || rawText.length < 200) {
+            console.log('Response too small -> no update');
+            process.exit(0);
+          }
+
+          let raw;
+          try { raw = JSON.parse(rawText); }
+          catch(e){ console.log('JSON parse failed -> no update'); process.exit(0); }
+
+          const out = {
+            updatedAt: new Date().toISOString(),
+            league: '${LEAGUE}',
+            lines: raw.lines || []
+          };
+
+          if (!out.lines.length) {
+            console.log('Parsed OK but lines empty -> no update');
+            process.exit(0);
+          }
+
+          fs.mkdirSync('data',{recursive:true});
+          fs.writeFileSync('data/prices.json', JSON.stringify(out,null,2));
+          console.log('prices.json updated with', out.lines.length, 'items');
+          "
+
 
 
 
