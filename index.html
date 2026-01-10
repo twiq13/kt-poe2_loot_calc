@@ -33,13 +33,15 @@
     <h2>Loot</h2>
 
     <table class="loot-table">
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th>Prix</th>
-          <th>Quantité</th>
-        </tr>
-      </thead>
+<thead>
+  <tr>
+    <th>Item</th>
+    <th>Prix</th>
+    <th>Quantité</th>
+    <th></th>
+  </tr>
+</thead>
+
       <tbody id="lootBody"></tbody>
     </table>
 
@@ -59,6 +61,10 @@
 <p>Total loot : <span id="totalLoot">0</span></p>
 <p>Gain : <span id="gain">0</span></p>
 <p>ROI : <span id="roi">0</span> %</p>
+  
+<div style="margin-top:20px;">
+  <button class="resetBtn" onclick="resetAll()">Reset all</button>
+</div>
 
 <div id="fetchStatus" class="status">
 Fetch status: attente...
@@ -67,3 +73,4 @@ Fetch status: attente...
 <script src="app.js"></script>
 </body>
 </html>
+
