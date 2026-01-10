@@ -2,11 +2,11 @@
    🎛 ICON SIZE CONTROL PANEL (CHANGE SIZES HERE)
    ========================================================= */
 
-/* Totals bar (Total Invest / Loot / Gains) */
 :root {
+  /* Totals bar (Total Invest / Loot / Gains) */
   --icon-total-size: 20px;
 
-  /* Left market list (Currency / Fragments icons) */
+  /* Left market list icons */
   --icon-market-size: 20px;
 
   /* Loot table - item icon (next to item name) */
@@ -47,29 +47,12 @@ input, button {
 
 input::placeholder { color: #aaa; }
 
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  background: #2f2f2f;
-}
+button { cursor: pointer; }
+button:hover { background: #2f2f2f; }
 
 /* =========================================================
    HEADER BAR (INVEST + TOTALS)
    ========================================================= */
-
-.tValue {
-  display: flex;
-  align-items: center;   /* CENTRE verticalement */
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.pIcon {
-  vertical-align: middle;
-  display: inline-block;
-}
 
 .header-bar {
   display: flex;
@@ -126,13 +109,14 @@ button:hover {
   font-size: 16px;
   font-weight: 700;
   display: flex;
-  align-items: center;
+  align-items: center;     /* centered vertically */
   gap: 6px;
   justify-content: flex-end;
 }
 
-/* Totals icons (Exalted / Divine) */
 .pIcon {
+  display: inline-block;
+  vertical-align: middle;
   width: var(--icon-total-size);
   height: var(--icon-total-size);
   filter: var(--icon-shadow);
@@ -149,9 +133,7 @@ button:hover {
   border-radius: 10px;
 }
 
-.resetBtn:hover {
-  background: #ff5a5a;
-}
+.resetBtn:hover { background: #ff5a5a; }
 
 /* =========================================================
    MAIN LAYOUT
@@ -165,17 +147,6 @@ button:hover {
 /* =========================================================
    LEFT PANEL (MARKET LIST)
    ========================================================= */
-
-.cLeft {
-  display: flex;
-  align-items: center;   /* CENTRE texte + icône */
-  gap: 8px;
-}
-
-.cIcon {
-  display: block;        /* évite le baseline inline */
-}
-
 
 .left-panel {
   width: 320px;
@@ -206,9 +177,7 @@ button:hover {
   color: #fff;
 }
 
-.tab.active {
-  border-color: #fff;
-}
+.tab.active { border-color: #fff; }
 
 #currencySearch {
   width: 100%;
@@ -234,9 +203,7 @@ button:hover {
   border-radius: 8px;
 }
 
-.currency-item:hover {
-  background: #2a2a2a;
-}
+.currency-item:hover { background: #2a2a2a; }
 
 .currency-item small {
   color: #bbb;
@@ -250,8 +217,8 @@ button:hover {
   gap: 8px;
 }
 
-/* Market icons */
 .cIcon {
+  display: block; /* avoid baseline inline alignment */
   width: var(--icon-market-size);
   height: var(--icon-market-size);
   filter: var(--icon-shadow);
@@ -260,10 +227,6 @@ button:hover {
 /* =========================================================
    RIGHT PANEL (LOOT TABLE)
    ========================================================= */
-
-.lootIcon {
-  display: block;
-}
 
 .app {
   flex: 1;
@@ -291,9 +254,7 @@ button:hover {
   padding: 10px 8px;
 }
 
-.loot-table th {
-  color: #ccc;
-}
+.loot-table th { color: #ccc; }
 
 .loot-table th:nth-child(1),
 .loot-table td:nth-child(1) { width: 48%; }
@@ -312,19 +273,36 @@ button:hover {
   width: 100%;
 }
 
-/* Loot icons (item) */
+/* Wrap item input + icon */
+.lootItemWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Loot item icon */
 .lootIcon {
+  display: block;
   width: var(--icon-loot-item-size);
   height: var(--icon-loot-item-size);
   filter: var(--icon-shadow);
 }
 
+/* Price cell */
+.priceCell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
 /* Loot price currency icon (Exalted) */
 .baseIcon {
+  display: block;
   width: var(--icon-loot-price-size);
   height: var(--icon-loot-price-size);
   margin-left: 6px;
-  vertical-align: middle;
   filter: var(--icon-shadow);
 }
 
@@ -350,9 +328,7 @@ button:hover {
   cursor: pointer;
 }
 
-.deleteBtn:hover {
-  color: #ff7b7b;
-}
+.deleteBtn:hover { color: #ff7b7b; }
 
 /* =========================================================
    STATUS BAR
@@ -368,26 +344,12 @@ button:hover {
   white-space: pre-wrap;
 }
 
-.lootItemWrap{ display:flex; align-items:center; gap:8px; }
-.priceCell{ display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap; }
-.priceUnit{ font-size:12px; color:#bbb; }
+/* =========================================================
+   FORCE ICON SIZES (safety override)
+   This guarantees the variables above always apply.
+   ========================================================= */
 
-/* ===== FORCE ICON SIZES (overrides inline) ===== */
-.pIcon,
-.cIcon,
-.lootIcon,
-.baseIcon {
-  width: var(--icon-total-size) !important;
-  height: var(--icon-total-size) !important;
-}
-
-/* If you want different sizes per zone, use these instead: */
-.pIcon { width: var(--icon-total-size) !important; height: var(--icon-total-size) !important; }
-.cIcon { width: var(--icon-market-size) !important; height: var(--icon-market-size) !important; }
-.lootIcon { width: var(--icon-loot-item-size) !important; height: var(--icon-loot-item-size) !important; }
-.baseIcon { width: var(--icon-loot-price-size) !important; height: var(--icon-loot-price-size) !important; }
-
-
-
-
-
+.pIcon   { width: var(--icon-total-size) !important;      height: var(--icon-total-size) !important; }
+.cIcon   { width: var(--icon-market-size) !important;     height: var(--icon-market-size) !important; }
+.lootIcon{ width: var(--icon-loot-item-size) !important;  height: var(--icon-loot-item-size) !important; }
+.baseIcon{ width: var(--icon-loot-price-size) !important; height: var(--icon-loot-price-size) !important; }
