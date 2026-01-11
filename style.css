@@ -7,6 +7,9 @@
   --icon-loot-item-size: 18px;
   --icon-loot-price-size: 18px;
   --icon-shadow: drop-shadow(0 0 2px rgba(0,0,0,.7));
+
+  /* ✅ CHANGE LOOT BG OPACITY HERE (0 → invisible, 1 → full) */
+  --loot-bg-opacity: 0.35;
 }
 
 /* =========================================================
@@ -35,10 +38,10 @@ input, button{
 input::placeholder{ color:#aaa; }
 
 button{ cursor:pointer; }
-button:hover{ background:#2a2a2a; }
+button:hover{ background:#2f2f2f; }
 
 /* =========================================================
-   HEADER BAR (INVEST + TOTALS)
+   HEADER BAR
    ========================================================= */
 .header-bar{
   display:flex;
@@ -64,6 +67,7 @@ button:hover{ background:#2a2a2a; }
   color:#bbb;
   margin-bottom:6px;
 }
+
 .field input{ width:160px; }
 
 .totals-mini{
@@ -77,20 +81,25 @@ button:hover{ background:#2a2a2a; }
   border:1px solid #333;
   border-radius:10px;
   padding:10px 12px;
-  min-width:150px;
+  min-width:160px;
 }
 
-.tLabel{ font-size:12px; color:#bbb; margin-bottom:6px; }
+.tLabel{
+  font-size:12px;
+  color:#bbb;
+  margin-bottom:6px;
+}
 
 .tValue{
   font-size:16px;
   font-weight:700;
   display:flex;
   align-items:center;
-  justify-content:flex-end;
   gap:6px;
+  justify-content:flex-end;
 }
 
+/* Totals icons */
 .pIcon{
   width:var(--icon-total-size);
   height:var(--icon-total-size);
@@ -99,7 +108,6 @@ button:hover{ background:#2a2a2a; }
   vertical-align:middle;
 }
 
-/* Reset button */
 .resetBtn{
   background:#ff3b3b;
   border:1px solid #ff3b3b;
@@ -117,17 +125,20 @@ button:hover{ background:#2a2a2a; }
 }
 
 /* =========================================================
-   LEFT PANEL (MARKET)
+   LEFT PANEL (MARKET LIST)
    ========================================================= */
 .left-panel{
-  width:340px;
+  width:320px;
   background:#222;
   border:1px solid #333;
   border-radius:12px;
   padding:12px;
 }
 
-.panel-title{ font-weight:700; margin-bottom:10px; }
+.panel-title{
+  font-weight:700;
+  margin-bottom:10px;
+}
 
 .tabs{
   display:flex;
@@ -152,21 +163,21 @@ button:hover{ background:#2a2a2a; }
 
 #marketList{
   max-height:560px;
-  overflow:auto;
+  overflow-y:auto;
   border:1px solid #333;
   border-radius:10px;
   padding:6px;
 }
 
+/* Market list row */
 .market-row{
   display:flex;
   justify-content:space-between;
-  gap:10px;
   align-items:center;
+  gap:10px;
   padding:8px;
   border-bottom:1px solid #333;
   border-radius:8px;
-  cursor:pointer;
 }
 .market-row:hover{ background:#2a2a2a; }
 
@@ -176,20 +187,35 @@ button:hover{ background:#2a2a2a; }
   gap:8px;
   min-width:0;
 }
+
 .mName{
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
-}
-.mRight{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  color:#ddd;
-  white-space:nowrap;
+  max-width:180px;
 }
 
-.mIcon{
+.mArrow{
+  color:#bbb;
+  margin:0 8px;
+  flex:0 0 auto;
+}
+
+.mRight{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  white-space:nowrap;
+  color:#ddd;
+}
+
+.cIcon{
+  width:var(--icon-market-size);
+  height:var(--icon-market-size);
+  filter:var(--icon-shadow);
+  display:block;
+}
+.unitIcon{
   width:var(--icon-market-size);
   height:var(--icon-market-size);
   filter:var(--icon-shadow);
@@ -197,14 +223,35 @@ button:hover{ background:#2a2a2a; }
 }
 
 /* =========================================================
-   RIGHT PANEL (LOOT TABLE)
+   RIGHT PANEL (LOOT)
    ========================================================= */
 .app{
+  position:relative;
   flex:1;
   background:#222;
   border:1px solid #333;
   border-radius:12px;
   padding:12px;
+  overflow:hidden;
+}
+
+/* ✅ Background image on loot panel */
+.app::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background-image:url("data/Vaal_Atziri_Cinematic1.png");
+  background-size:cover;
+  background-position:center;
+  opacity:var(--loot-bg-opacity); /* ✅ CHANGE OPACITY HERE */
+  pointer-events:none;
+  z-index:0;
+}
+
+/* Ensure content above background */
+.app > *{
+  position:relative;
+  z-index:1;
 }
 
 .app-title{
@@ -223,7 +270,6 @@ button:hover{ background:#2a2a2a; }
 .loot-table td{
   border-bottom:1px solid #333;
   padding:10px 8px;
-  vertical-align:middle;
 }
 
 .loot-table th{ color:#ccc; }
@@ -240,10 +286,15 @@ button:hover{ background:#2a2a2a; }
 .loot-table th:nth-child(4),
 .loot-table td:nth-child(4){ width:44px; text-align:center; }
 
+.loot-table input[type="number"],
+.loot-table input[list]{
+  width:100%;
+}
+
 .lootItemWrap{
   display:flex;
   align-items:center;
-  gap:10px;
+  gap:8px;
 }
 
 .lootIcon{
@@ -268,6 +319,41 @@ button:hover{ background:#2a2a2a; }
   display:inline-block;
 }
 
+/* Qty controls */
+.qtyWrap{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  justify-content:center;
+}
+
+.lootQty{
+  width:50% !important; /* ✅ Qty input reduced */
+  text-align:center;
+}
+
+/* ✅ Smaller + / − buttons (matching Add row "+") */
+.qtyBtn{
+  width:26px;
+  height:26px;
+  border-radius:9px;
+  border:1px solid #444;
+  background:#1b1b1b;
+  color:#fff;
+  font-weight:900;
+  font-size:14px;
+  line-height:1;
+  padding:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.qtyBtn:hover{
+  background:#2a2a2a;
+  border-color:#666;
+}
+
+/* Actions */
 .loot-actions{
   margin-top:12px;
   display:flex;
@@ -278,37 +364,6 @@ button:hover{ background:#2a2a2a; }
   color:#fff;
   font-weight:900;
   margin-right:6px;
-}
-
-/* Qty: shrink input + +/- buttons */
-.qtyWrap{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  gap:6px;
-  width:100%;
-}
-
-.qtyWrap input.lootQty{
-  width:50%;
-  min-width:70px;
-  text-align:center;
-}
-
-.qtyBtn{
-  width:32px;
-  height:32px;
-  border-radius:10px;
-  border:1px solid #444;
-  background:#1b1b1b;
-  color:#fff;
-  font-weight:900;
-  font-size:18px;
-  line-height:1;
-}
-.qtyBtn:hover{
-  background:#2a2a2a;
-  border-color:#666;
 }
 
 /* Delete button */
@@ -322,6 +377,18 @@ button:hover{ background:#2a2a2a; }
 .deleteBtn:hover{ color:#ff7b7b; }
 
 /* =========================================================
+   DARK SCROLLBARS
+   ========================================================= */
+*{
+  scrollbar-width:thin;
+  scrollbar-color:#444 #1b1b1b;
+}
+*::-webkit-scrollbar{ width:10px; height:10px; }
+*::-webkit-scrollbar-track{ background:#1b1b1b; border-radius:10px; }
+*::-webkit-scrollbar-thumb{ background:#444; border-radius:10px; border:2px solid #1b1b1b; }
+*::-webkit-scrollbar-thumb:hover{ background:#555; }
+
+/* =========================================================
    STATUS BAR
    ========================================================= */
 .status{
@@ -333,18 +400,3 @@ button:hover{ background:#2a2a2a; }
   color:#00ff66;
   white-space:pre-wrap;
 }
-
-/* =========================================================
-   DARK SCROLLBARS
-   ========================================================= */
-::-webkit-scrollbar{ width:10px; height:10px; }
-::-webkit-scrollbar-track{ background:#151515; border-radius:10px; }
-::-webkit-scrollbar-thumb{
-  background:#3a3a3a;
-  border-radius:10px;
-  border:2px solid #151515;
-}
-::-webkit-scrollbar-thumb:hover{ background:#555; }
-
-/* Firefox */
-*{ scrollbar-width:thin; scrollbar-color:#3a3a3a #151515; }
