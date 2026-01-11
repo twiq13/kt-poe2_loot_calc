@@ -26,6 +26,12 @@
         <label>Cost per Map (Ex)</label>
         <input type="number" id="costPerMap" value="0" min="0" step="0.01">
       </div>
+
+      <!-- NEW: Cost per Map (Div) -->
+      <div class="field">
+        <label>Cost per Map (Div)</label>
+        <input type="number" id="costPerMapDiv" value="0" min="0" step="0.01">
+      </div>
     </div>
 
     <!-- TOTALS (right) -->
@@ -45,6 +51,16 @@
         <div class="tValue" id="gain">0</div>
       </div>
 
+      <!-- NEW: Reddit button (opens new tab; no copy) -->
+      <a
+        class="resetBtn"
+        id="redditBtn"
+        href="https://www.reddit.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open Reddit post"
+      >Reddit</a>
+
       <button class="resetBtn" id="resetBtn" type="button">Reset</button>
     </div>
 
@@ -60,8 +76,6 @@
 
       <!-- TABS (app.js expects #tabs) -->
       <div class="tabs" id="tabs">
-        <!-- optional: can keep these static buttons OR let buildTabs() recreate them.
-             If buildTabs() runs, it will overwrite this content anyway. -->
         <button class="tab active" data-tab="currency">Currency</button>
         <button class="tab" data-tab="fragments">Fragments</button>
         <button class="tab" data-tab="abyssalBones">Abyssal Bones</button>
@@ -85,7 +99,7 @@
     </aside>
 
     <!-- RIGHT PANEL -->
-    <main class="app">
+    <main class="app" id="lootApp">
       <div class="app-title">Loot</div>
 
       <table class="loot-table">
@@ -101,7 +115,6 @@
       </table>
 
       <div class="loot-actions">
-        <!-- Use the correct function names -->
         <button type="button" onclick="addLootRow()">
           <span class="btnIcon">+</span> Add row
         </button>
@@ -109,6 +122,11 @@
           <span class="btnIcon">+</span> Manual row
         </button>
       </div>
+
+      <!-- NEW: Export CSV button (to be anchored via CSS bottom-center) -->
+      <button type="button" id="exportCsvBtn" class="exportCsvBtn" title="Export loot to CSV">
+        Export CSV
+      </button>
     </main>
 
   </div>
@@ -123,5 +141,3 @@
   <script src="app.js?v=1" defer></script>
 </body>
 </html>
-
-
