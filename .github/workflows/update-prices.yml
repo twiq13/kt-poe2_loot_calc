@@ -28,7 +28,7 @@ jobs:
 
       - name: Scrape poe.ninja PoE2 and build prices.json
         env:
-          LEAGUE: standard
+          LEAGUE: vaal
         run: node scripts/scrape-poeninja-poe2.mjs
 
       - name: Commit & push if changed
