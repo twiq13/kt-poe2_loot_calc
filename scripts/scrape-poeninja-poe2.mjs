@@ -18,7 +18,7 @@ const SECTIONS = [
   { id: "omens",          label: "Omens",           slug: "omens" },
   { id: "expedition",     label: "Expedition",      slug: "expedition" },
   { id: "liquidEmotions", label: "Liquid Emotions", slug: "liquid-emotions" },
-  { id: "catalyst",       label: "Catalyst",        slug: "breach-catalyst" }, // as in your JSON snippet
+  { id: "catalyst",       label: "Catalyst",        slug: "breach-catalyst" },
 ];
 
 function cleanName(name) {
@@ -51,114 +51,138 @@ async function findValueColIndex(page) {
   });
 }
 
+/**
+ * Force the UI filter "Value Display" to "Exalted Orb"
+ * Works on poe.ninja pages using a combobox/listbox style dropdown.
+ */
+async function forceValueDisplayExalted(page) {
+  // Try a few selector strategies (poe.ninja UI can change)
+  const candidates = [
+    // Often a labeled region with "Value Display"
+    'text=Value Display',
+    '[aria-label="Value Display"]',
+  ];
+
+  // 1) Click the container that includes "Value Display"
+  // We'll try to open the dropdown by clicking near the label.
+  let opened = false;
+
+  for (const sel of candidates) {
+    const el = page.locator(sel).first();
+    if (await el.count()) {
+      try {
+        // click on label then press Enter to open
+        await el.click({ timeout: 2000 });
+        await page.keyboard.press("Enter");
+        opened = true;
+        break;
+      } catch {}
+    }
+  }
+
+  // 2) If not opened, try clicking a combobox directly
+  if (!opened) {
+    const combo = page.locator('[role="combobox"]').first();
+    try {
+      if (await combo.count()) {
+        await combo.click({ timeout: 2000 });
+        opened = true;
+      }
+    } catch {}
+  }
+
+  // 3) Select "Exalted Orb" in dropdown (listbox/menu)
+  // We use text matching.
+  const option = page.locator('text=Exalted Orb').first();
+  if (await option.count()) {
+    try {
+      await option.click({ timeout: 4000 });
+      await page.waitForTimeout(300);
+      return true;
+    } catch {}
+  }
+
+  // 4) Fallback: type in the combobox if editable
+  try {
+    const combo = page.locator('[role="combobox"]').first();
+    if (await combo.count()) {
+      await combo.fill("Exalted Orb");
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(300);
+      return true;
+    }
+  } catch {}
+
+  return false; // not fatal
+}
+
 async function scrapeSection(page, sec) {
   const url = `${BASE}/poe2/economy/${LEAGUE}/${sec.slug}`;
-  console.log(`=== ${sec.label} -> ${url}`);
+  console.log(`=== Section: ${sec.label} -> ${url}`);
 
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForSelector("table thead th", { timeout: 60000 });
   await page.waitForSelector("table tbody tr", { timeout: 60000 });
-  await page.waitForTimeout(700);
+
+  // Force Value Display = Exalted Orb
+  await forceValueDisplayExalted(page);
+
+  // Wait a bit for table rerender
+  await page.waitForTimeout(600);
 
   const valueColIndex = await findValueColIndex(page);
   if (valueColIndex < 0) return { url, lines: [] };
 
-  const lines = await page.evaluate(({ valueColIndex }) => {
-    const normSpace = (s) => (s || "").replace(/\s+/g, " ").trim();
+  const raw = await page.evaluate(({ valueColIndex }) => {
+    const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
 
-    const out = [];
     const trs = Array.from(document.querySelectorAll("table tbody tr"));
+    const out = [];
 
     for (const tr of trs) {
       const tds = Array.from(tr.querySelectorAll("td"));
       if (!tds.length || tds.length <= valueColIndex) continue;
 
-      const name = normSpace(tds[0].innerText);
+      const name = norm(tds[0].innerText);
       if (!name) continue;
 
       const icon = tds[0].querySelector("img")?.getAttribute("src") || "";
 
       const vCell = tds[valueColIndex];
-      const vText = normSpace(vCell.innerText);
+      const vText = norm(vCell.innerText);
 
-      // amount: first numeric token
+      // first numeric token is the displayed value (now Exalted)
       const tok = vText.split(" ").find(x => /^[0-9]/.test(x)) || "";
       const amount = tok || "";
 
-      // unitIcon: last image inside value cell usually is the unit currency icon
+      // unit icon: in Exalted display it usually contains Exalted icon inside cell
       const imgs = Array.from(vCell.querySelectorAll("img"));
-      const lastImg = imgs[imgs.length - 1] || null;
+      // try to pick the "target" icon (last one usually)
+      const unitIcon = (imgs[imgs.length - 1]?.getAttribute("src")) || "";
 
-      const unitIcon = lastImg?.getAttribute("src") || "";
-      const unit =
-        lastImg?.getAttribute("alt")
-        || lastImg?.getAttribute("title")
-        || lastImg?.getAttribute("aria-label")
-        || "";
-
-      out.push({ name, icon, amount, unit, unitIcon });
+      out.push({ name, icon, amount, unitIcon });
     }
 
     return out;
   }, { valueColIndex });
 
-  // normalize + parse numbers
-  const parsed = lines.map(x => ({
-    section: sec.id,
-    name: cleanName(x.name),
-    icon: normalizeUrl(x.icon),
-    amount: parseCompactNumber(x.amount),
-    unit: cleanName(x.unit || ""),
-    unitIcon: normalizeUrl(x.unitIcon),
-    exaltedValue: null
-  })).filter(x => x.name && x.amount !== null);
+  const parsed = raw
+    .map(x => ({
+      section: sec.id,
+      name: cleanName(x.name),
+      icon: normalizeUrl(x.icon),
+      amount: parseCompactNumber(x.amount),
+      unit: "Exalted Orb",
+      unitIcon: normalizeUrl(x.unitIcon),
+      exaltedValue: null, // will set = amount
+    }))
+    .filter(x => x.name && x.amount !== null);
+
+  // since table is forced in Exalted display:
+  for (const it of parsed) it.exaltedValue = it.amount;
 
   console.log(`Done: ${sec.id} rows=${parsed.length}`);
   return { url, lines: parsed };
-}
-
-function computeRatesAndFillEx(lines) {
-  const currency = lines.filter(x => x.section === "currency");
-  const byName = new Map(currency.map(x => [x.name.toLowerCase(), x]));
-
-  const exRow = byName.get("exalted orb");
-  const divRow = byName.get("divine orb");
-
-  const baseIcon = exRow?.icon || "";
-  const divineIcon = divRow?.icon || "";
-
-  // 1 Ex = X Chaos (must be read from Exalted Orb row)
-  let exChaos = null;
-  if (exRow && exRow.unit.toLowerCase() === "chaos orb" && exRow.amount > 0) {
-    exChaos = exRow.amount;
-  }
-
-  // 1 Div = X Ex (from Div Chaos / exChaos)
-  let divineInEx = null;
-  if (divRow) {
-    if (divRow.unit.toLowerCase() === "exalted orb" && divRow.amount > 0) {
-      divineInEx = divRow.amount;
-    } else if (divRow.unit.toLowerCase() === "chaos orb" && divRow.amount > 0 && exChaos && exChaos > 0) {
-      divineInEx = divRow.amount / exChaos;
-    }
-  }
-
-  // Fill exaltedValue for all lines
-  for (const it of lines) {
-    const u = (it.unit || "").toLowerCase();
-
-    if (u === "exalted orb") {
-      it.exaltedValue = it.amount;
-    } else if (u === "chaos orb" && exChaos && exChaos > 0) {
-      it.exaltedValue = it.amount / exChaos;
-    } else if (u === "divine orb" && divineInEx && divineInEx > 0) {
-      it.exaltedValue = it.amount * divineInEx;
-    } else {
-      it.exaltedValue = null;
-    }
-  }
-
-  return { baseIcon, divineIcon, exChaos, divineInEx };
 }
 
 (async () => {
@@ -177,27 +201,35 @@ function computeRatesAndFillEx(lines) {
   });
 
   let all = [];
-  let currencyUrl = `${BASE}/poe2/economy/${LEAGUE}/currency`;
+  let firstUrl = "";
 
   for (const s of SECTIONS) {
     const r = await scrapeSection(page, s);
-    if (s.id === "currency") currencyUrl = r.url;
+    if (!firstUrl) firstUrl = r.url;
     all = all.concat(r.lines);
   }
 
   await browser.close();
 
-  const rates = computeRatesAndFillEx(all);
+  // Determine Exalted icon + Divine rate (Div in Ex) from currency rows
+  const currency = all.filter(x => x.section === "currency");
+  const byName = new Map(currency.map(x => [x.name.toLowerCase(), x]));
+
+  const exRow = byName.get("exalted orb");
+  const divRow = byName.get("divine orb");
+
+  const baseIcon = exRow?.icon || "";
+  const divineIcon = divRow?.icon || "";
+  const divineInEx = divRow?.exaltedValue ?? null; // now directly from display
 
   const out = {
     updatedAt: new Date().toISOString(),
     league: LEAGUE,
-    source: currencyUrl,
+    source: firstUrl || `${BASE}/poe2/economy/${LEAGUE}/currency`,
     base: "Exalted Orb",
-    baseIcon: rates.baseIcon,
-    divineIcon: rates.divineIcon,
-    exChaos: rates.exChaos,         // 1 Ex = X Chaos
-    divineInEx: rates.divineInEx,   // 1 Div = X Ex
+    baseIcon,
+    divineIcon,
+    divineInEx, // 1 Divine = X Ex (taken directly from forced display)
     sections: SECTIONS.map(s => ({ id: s.id, label: s.label, slug: s.slug })),
     lines: all
   };
@@ -206,5 +238,5 @@ function computeRatesAndFillEx(lines) {
   fs.writeFileSync("data/prices.json", JSON.stringify(out, null, 2), "utf8");
 
   const exFound = all.filter(x => typeof x.exaltedValue === "number").length;
-  console.log(`OK -> sections=${SECTIONS.length} items=${all.length} exaltedValue=${exFound} exChaos=${rates.exChaos} divineInEx=${rates.divineInEx}`);
+  console.log(`OK -> sections=${SECTIONS.length} items=${all.length} exaltedValue=${exFound} | 1Div=${divineInEx}Ex`);
 })();
