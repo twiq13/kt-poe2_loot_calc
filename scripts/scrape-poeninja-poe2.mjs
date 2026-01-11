@@ -1,4 +1,3 @@
-// scripts/scrape-poeninja-poe2.mjs
 import fs from "fs";
 import { chromium } from "playwright";
 
@@ -45,45 +44,97 @@ function parseCompactNumber(s) {
   return Number.isFinite(n) ? n : null;
 }
 
-async function forceValueDisplayExalted(page) {
-  // Le dropdown est un composant React. On tente plusieurs stratégies robustes.
-  // Objectif: sélectionner l'option "Exalted Orb".
-  const optionText = "Exalted Orb";
-
-  // 1) Cherche un bouton/zone clickable autour du libellé "Value Display"
-  const label = page.getByText("Value Display", { exact: false });
-  if (await label.count().catch(() => 0)) {
-    // remonte un peu et clique sur le control à droite
-    // on essaie de cliquer dans la zone du dropdown
-    const box = await label.first().boundingBox().catch(() => null);
-    if (box) {
-      // clique un peu à droite sous le label (dans la zone du select)
-      await page.mouse.click(box.x + box.width + 120, box.y + box.height + 18).catch(() => {});
-    }
-  }
-
-  // 2) Si un menu s'ouvre, clique l'option Exalted Orb
-  // React-select met souvent les options en liste avec role option / listbox
-  const option = page.getByText(optionText, { exact: false }).first();
-  if (await option.count().catch(() => 0)) {
-    await option.click({ timeout: 4000 }).catch(() => {});
-  }
-
-  // 3) Fallback : si pas ouvert, clique sur une flèche de select si présente
-  // Puis re-tente l'option
-  if (!(await page.getByText(optionText, { exact: false }).count().catch(() => 0))) {
-    // rien à faire
-  }
-
-  // petite pause pour que la table recalcul les valeurs
-  await page.waitForTimeout(600);
-}
-
 async function getValueColumnIndex(page) {
   return await page.evaluate(() => {
     const ths = Array.from(document.querySelectorAll("table thead th"));
     return ths.findIndex(th => (th.innerText || "").trim().toLowerCase() === "value");
   });
+}
+
+/**
+ * Force "Value Display" -> "Exalted Orb"
+ * Méthode robuste:
+ * - trouver le bloc qui contient le texte "Value Display"
+ * - cliquer le control (dropdown)
+ * - taper "Exalted Orb" + Enter
+ * - vérifier que la valeur de Divine Orb devient > 100 (sinon retry)
+ */
+async function forceValueDisplayExalted(page) {
+  const desired = "Exalted Orb";
+
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    // Clique le control proche du texte "Value Display"
+    const container = page.locator("div", { hasText: "Value Display" }).first();
+
+    // Plusieurs UI possibles : on clique dans le container puis on utilise clavier
+    await container.click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(200);
+
+    // si dropdown pas ouvert, parfois il faut cliquer un élément frère (le select)
+    // on tente un clic un peu à droite du container
+    const box = await container.boundingBox().catch(() => null);
+    if (box) {
+      await page.mouse.click(box.x + box.width - 10, box.y + box.height - 10).catch(() => {});
+    }
+
+    await page.waitForTimeout(250);
+
+    // Taper au clavier puis Enter (react-select / listbox)
+    await page.keyboard.press("Control+A").catch(() => {});
+    await page.keyboard.type(desired, { delay: 30 }).catch(() => {});
+    await page.keyboard.press("Enter").catch(() => {});
+
+    // Attendre que la table se recalcul
+    await page.waitForTimeout(900);
+
+    // Vérif: lire la valeur de Divine Orb dans la table (section currency uniquement)
+    // (si la table est en Exalted, Divine vaut souvent plusieurs centaines Ex)
+    const divineVal = await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll("table tbody tr"));
+      const row = rows.find(r => (r.innerText || "").toLowerCase().includes("divine orb"));
+      if (!row) return null;
+
+      const tds = Array.from(row.querySelectorAll("td"));
+      // on prend la cellule "Value" en trouvant l'entête
+      const ths = Array.from(document.querySelectorAll("table thead th"));
+      const idx = ths.findIndex(th => (th.innerText || "").trim().toLowerCase() === "value");
+      if (idx < 0 || !tds[idx]) return null;
+
+      const txt = (tds[idx].innerText || "").replace(/\s+/g, " ").trim();
+      const token = txt.split(" ").find(x => /^[0-9]/.test(x));
+      return token || null;
+    });
+
+    const divineParsed = parseCompactNumber(divineVal);
+
+    // Si Divine devient > 100, on considère que c'est bien en Exalted
+    if (divineParsed && divineParsed > 100) {
+      console.log(`Value Display OK ✅ (Divine ~ ${divineParsed} Ex)`);
+      return true;
+    }
+
+    console.log(`Value Display retry ${attempt}/4 (Divine token="${divineVal}" parsed=${divineParsed})`);
+  }
+
+  console.log("⚠️ Could not force Value Display to Exalted (continuing anyway).");
+  return false;
+}
+
+async function getBaseExaltedIconFromValueCell(page, valueColIndex) {
+  try {
+    const src = await page.evaluate((idx) => {
+      const tr = document.querySelector("table tbody tr");
+      if (!tr) return "";
+      const td = tr.querySelectorAll("td")[idx];
+      if (!td) return "";
+      const imgs = td.querySelectorAll("img");
+      const last = imgs[imgs.length - 1];
+      return last ? (last.getAttribute("src") || "") : "";
+    }, valueColIndex);
+    return normalizeUrl(src);
+  } catch {
+    return "";
+  }
 }
 
 async function scrapeSection(page, section) {
@@ -94,32 +145,18 @@ async function scrapeSection(page, section) {
   await page.waitForSelector("table thead th", { timeout: 60000 });
   await page.waitForSelector("table tbody tr", { timeout: 60000 });
 
-  // ✅ FORCE "Value Display" -> Exalted Orb
+  // Force Value Display
   await forceValueDisplayExalted(page);
 
   const valueColIndex = await getValueColumnIndex(page);
-  if (valueColIndex < 0) throw new Error(`Value column not found for section ${section.id}`);
+  if (valueColIndex < 0) throw new Error(`Value column not found in section ${section.id}`);
 
-  // Base icon = Exalted Orb icon : on la prend depuis un value cell img si possible
-  let baseIcon = "";
-  try {
-    baseIcon = await page.evaluate((idx) => {
-      const tr = document.querySelector("table tbody tr");
-      if (!tr) return "";
-      const td = tr.querySelectorAll("td")[idx];
-      if (!td) return "";
-      const imgs = td.querySelectorAll("img");
-      const last = imgs[imgs.length - 1];
-      return last ? last.getAttribute("src") || "" : "";
-    }, valueColIndex);
-    baseIcon = normalizeUrl(baseIcon);
-  } catch {}
+  const baseIcon = await getBaseExaltedIconFromValueCell(page, valueColIndex);
 
-  // Rows
   const rows = await page.$$("table tbody tr");
-  const max = Math.min(rows.length, 400);
+  const max = Math.min(rows.length, 450);
 
-  let lines = [];
+  const lines = [];
   for (let i = 0; i < max; i++) {
     const tr = rows[i];
     const tds = await tr.$$("td");
@@ -133,22 +170,20 @@ async function scrapeSection(page, section) {
     const img0 = await tds[0].$("img");
     if (img0) icon = normalizeUrl((await img0.getAttribute("src")) || "");
 
-    // Value cell: le nombre est le premier token qui commence par chiffre
     const valueText = ((await tds[valueColIndex].innerText()) || "").replace(/\s+/g, " ").trim();
     const token = valueText.split(" ").find(x => /^[0-9]/.test(x)) || null;
-    const exaltedValue = parseCompactNumber(token);
+    const exVal = parseCompactNumber(token);
 
-    // si null -> on skip (ça évite les bugs)
-    if (exaltedValue === null) continue;
+    if (exVal === null) continue;
 
     lines.push({
       section: section.id,
       name,
       icon,
-      amount: exaltedValue,          // affichage actuel = exalted
+      amount: exVal,
       unit: "Exalted Orb",
-      unitIcon: baseIcon || "",
-      exaltedValue: exaltedValue,    // ✅ vrai prix en Exalted
+      unitIcon: baseIcon,
+      exaltedValue: exVal,
     });
   }
 
@@ -189,8 +224,9 @@ async function scrapeSection(page, section) {
   fs.mkdirSync("data", { recursive: true });
   fs.writeFileSync("data/prices.json", JSON.stringify(out, null, 2), "utf8");
 
-  // sanity check: Divine Orb should be around hundreds Ex, not 36
-  const divine = allLines.find(x => x.section === "currency" && x.name.toLowerCase() === "divine orb");
+  const divine = allLines.find(
+    x => x.section === "currency" && x.name.toLowerCase() === "divine orb"
+  );
   console.log(`TOTAL lines=${allLines.length}`);
   console.log(`Divine Orb exaltedValue = ${divine?.exaltedValue ?? "NOT FOUND"}`);
 })();
