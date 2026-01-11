@@ -124,10 +124,23 @@
   <!-- STATUS -->
   <div id="fetchStatus" class="status">Status: waiting...</div>
 
-  <!-- FOOTER SIGNATURE -->
-  <div class="site-signature">Site créé par kt</div>
+<footer class="site-signature" role="contentinfo">
+  <span>© <span id="year"></span> PoE2 Loot Calculator</span>
+  <span class="sep">•</span>
+  <span>Created by <strong>KT_</strong></span>
+  <span class="sep">•</span>
+  <a href="https://github.com/twiq13/" target="_blank" rel="noopener">
+    github.com/twiq13
+  </a>
+</footer>
+
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+</script>
+
 
   <!-- JS -->
   <script src="app.js?v=1" defer></script>
 </body>
 </html>
+
