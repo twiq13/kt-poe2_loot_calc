@@ -10,6 +10,18 @@
 
 <body>
 
+  <!-- TOP RIGHT (like "Feedback" button) -->
+  <a
+    id="redditBtn"
+    class="resetBtn redditBtn"
+    href="https://www.reddit.com/r/pathofexile2/"
+    target="_blank"
+    rel="noopener"
+    title="Open Reddit"
+  >
+    Reddit
+  </a>
+
   <h1>PoE2 Loot Calculator</h1>
 
   <!-- HEADER BAR -->
@@ -27,7 +39,6 @@
         <input type="number" id="costPerMap" value="0" min="0" step="0.01">
       </div>
 
-      <!-- NEW: Cost per Map (Div) -->
       <div class="field">
         <label>Cost per Map (Div)</label>
         <input type="number" id="costPerMapDiv" value="0" min="0" step="0.01">
@@ -51,15 +62,8 @@
         <div class="tValue" id="gain">0</div>
       </div>
 
-      <!-- NEW: Reddit button (opens new tab; no copy) -->
-      <a
-        class="resetBtn"
-        id="redditBtn"
-        href="https://www.reddit.com/"
-        target="_blank"
-        rel="noopener noreferrer"
-        title="Open Reddit post"
-      >Reddit</a>
+      <!-- toggle Ex/Div display for totals -->
+      <button class="toggleBtn" id="displayUnitBtn" type="button">Show Div</button>
 
       <button class="resetBtn" id="resetBtn" type="button">Reset</button>
     </div>
@@ -74,32 +78,16 @@
       <div class="panel-title">Market List</div>
       <div class="panel-title">League: Fate of the Vaal</div>
 
-      <!-- TABS (app.js expects #tabs) -->
-      <div class="tabs" id="tabs">
-        <button class="tab active" data-tab="currency">Currency</button>
-        <button class="tab" data-tab="fragments">Fragments</button>
-        <button class="tab" data-tab="abyssalBones">Abyssal Bones</button>
-        <button class="tab" data-tab="uncutGems">Uncut Gems</button>
-        <button class="tab" data-tab="lineageGems">Lineage Gems</button>
-        <button class="tab" data-tab="essences">Essences</button>
-        <button class="tab" data-tab="soulCores">Soul Cores</button>
-        <button class="tab" data-tab="idols">Idols</button>
-        <button class="tab" data-tab="runes">Runes</button>
-        <button class="tab" data-tab="omens">Omens</button>
-        <button class="tab" data-tab="expedition">Expedition</button>
-        <button class="tab" data-tab="liquidEmotions">Liquid Emotions</button>
-        <button class="tab" data-tab="catalyst">Catalyst</button>
-      </div>
+      <!-- TABS -->
+      <div class="tabs" id="tabs"></div>
 
-      <!-- app.js expects #marketSearch -->
       <input id="marketSearch" placeholder="Search..." />
 
-      <!-- app.js expects #marketList -->
       <div id="marketList"></div>
     </aside>
 
     <!-- RIGHT PANEL -->
-    <main class="app" id="lootApp">
+    <main class="app">
       <div class="app-title">Loot</div>
 
       <table class="loot-table">
@@ -118,24 +106,26 @@
         <button type="button" onclick="addLootRow()">
           <span class="btnIcon">+</span> Add row
         </button>
+
         <button type="button" onclick="addManualRow()">
           <span class="btnIcon">+</span> Manual row
         </button>
-      </div>
 
-      <!-- NEW: Export CSV button (to be anchored via CSS bottom-center) -->
-      <button type="button" id="exportCsvBtn" class="exportCsvBtn" title="Export loot to CSV">
-        Export CSV
-      </button>
+        <!-- same spacing as others -->
+        <button type="button" id="exportCsvBtn">Export CSV</button>
+      </div>
     </main>
 
   </div>
 
-  <!-- AUTOCOMPLETE (app.js expects #itemDatalist) -->
+  <!-- AUTOCOMPLETE -->
   <datalist id="itemDatalist"></datalist>
 
   <!-- STATUS -->
   <div id="fetchStatus" class="status">Status: waiting...</div>
+
+  <!-- FOOTER SIGNATURE -->
+  <div class="site-signature">Site créé par kt</div>
 
   <!-- JS -->
   <script src="app.js?v=1" defer></script>
