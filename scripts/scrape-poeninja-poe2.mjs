@@ -1,3 +1,4 @@
+// scripts/scrape-poeninja-poe2.mjs
 import fs from "fs";
 import { chromium } from "playwright";
 
@@ -5,19 +6,19 @@ const LEAGUE = (process.env.LEAGUE || "vaal").toLowerCase();
 const BASE = "https://poe.ninja";
 
 const SECTIONS = [
-  { id: "currency", slug: "currency" },
-  { id: "fragments", slug: "fragments" },
-  { id: "abyssalBones", slug: "abyssal-bones" },
-  { id: "uncutGems", slug: "uncut-gems" },
-  { id: "lineageGems", slug: "lineage-support-gems" },
-  { id: "essences", slug: "essences" },
-  { id: "soulCores", slug: "soul-cores" },
-  { id: "idols", slug: "idols" },
-  { id: "runes", slug: "runes" },
-  { id: "omens", slug: "omens" },
-  { id: "expedition", slug: "expedition" },
-  { id: "liquidEmotions", slug: "liquid-emotions" },
-  { id: "catalyst", slug: "breach-catalyst" },
+  { id: "currency", label: "Currency", slug: "currency" },
+  { id: "fragments", label: "Fragments", slug: "fragments" },
+  { id: "abyssalBones", label: "Abyssal Bones", slug: "abyssal-bones" },
+  { id: "uncutGems", label: "Uncut Gems", slug: "uncut-gems" },
+  { id: "lineageGems", label: "Lineage Gems", slug: "lineage-support-gems" },
+  { id: "essences", label: "Essences", slug: "essences" },
+  { id: "soulCores", label: "Soul Cores", slug: "soul-cores" },
+  { id: "idols", label: "Idols", slug: "idols" },
+  { id: "runes", label: "Runes", slug: "runes" },
+  { id: "omens", label: "Omens", slug: "omens" },
+  { id: "expedition", label: "Expedition", slug: "expedition" },
+  { id: "liquidEmotions", label: "Liquid Emotions", slug: "liquid-emotions" },
+  { id: "catalyst", label: "Catalyst", slug: "breach-catalyst" },
 ];
 
 function cleanName(name) {
@@ -26,7 +27,7 @@ function cleanName(name) {
 
 function normalizeUrl(u) {
   if (!u) return "";
-  if (u.startsWith("http")) return u;
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
   if (u.startsWith("//")) return "https:" + u;
   if (u.startsWith("/")) return BASE + u;
   return u;
@@ -34,105 +35,103 @@ function normalizeUrl(u) {
 
 function parseCompactNumber(s) {
   if (!s) return null;
-  const t = s.toLowerCase().replace(/,/g, ".");
-  const m = t.match(/^([\d.]+)(k|m)?$/);
+  const t = String(s).trim().toLowerCase().replace(/,/g, ".");
+  const m = t.match(/^([0-9]+(\.[0-9]+)?)(k|m)?$/i);
   if (!m) return null;
   let n = Number(m[1]);
-  if (m[2] === "k") n *= 1_000;
-  if (m[2] === "m") n *= 1_000_000;
+  if (m[3] === "k") n *= 1000;
+  if (m[3] === "m") n *= 1000000;
   return Number.isFinite(n) ? n : null;
 }
 
-async function getValueColumnIndex(page) {
+async function getValueColIndex(page) {
   return await page.evaluate(() => {
-    const ths = [...document.querySelectorAll("table thead th")];
-    return ths.findIndex(th => th.innerText.trim().toLowerCase() === "value");
+    const ths = Array.from(document.querySelectorAll("table thead th"));
+    return ths.findIndex(th => (th.innerText || "").trim().toLowerCase() === "value");
   });
 }
 
-async function scrapeSection(page, section) {
-  const url = `https://poe.ninja/poe2/economy/${LEAGUE}/${section.slug}`;
-  console.log(`Scraping ${section.id}`);
+async function scrapeSection(page, sec) {
+  const url = `https://poe.ninja/poe2/economy/${LEAGUE}/${sec.slug}?value=exalted`;
+  console.log(`=== Section: ${sec.label} -> ${url}`);
 
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForSelector("table tbody tr");
+  await page.waitForSelector("table tbody tr", { timeout: 60000 });
 
-  const valueCol = await getValueColumnIndex(page);
+  const valueCol = await getValueColIndex(page);
+  if (valueCol < 0) throw new Error('Could not find "Value" column.');
+
   const rows = await page.$$("table tbody tr");
-
-  const lines = [];
+  const out = [];
 
   for (const tr of rows) {
     const tds = await tr.$$("td");
     if (tds.length <= valueCol) continue;
 
-    const name = cleanName(await tds[0].innerText());
+    const nameRaw = ((await tds[0].innerText()) || "").replace(/\s+/g, " ").trim();
+    const name = cleanName(nameRaw);
     if (!name) continue;
 
     let icon = "";
-    const img = await tds[0].$("img");
-    if (img) icon = normalizeUrl(await img.getAttribute("src"));
+    const img0 = await tds[0].$("img");
+    if (img0) icon = normalizeUrl((await img0.getAttribute("src")) || "");
 
-    const valueText = await tds[valueCol].innerText();
-    const token = valueText.split(" ").find(x => /^\d/.test(x));
-    const chaosValue = parseCompactNumber(token);
+    const valueText = ((await tds[valueCol].innerText()) || "").replace(/\s+/g, " ").trim();
+    const token = valueText.split(" ").find(x => /^[0-9]/.test(x)) || null;
+    const exVal = parseCompactNumber(token);
 
-    if (!chaosValue) continue;
+    if (exVal === null) continue;
 
-    lines.push({
-      section: section.id,
+    out.push({
+      section: sec.id,
       name,
       icon,
-      chaosValue
+      exaltedValue: exVal
     });
   }
 
-  return lines;
+  console.log(`Done: rows=${rows.length} kept=${out.length}`);
+  return out;
 }
 
 (async () => {
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const page = await browser.newPage({
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+  });
 
-  let allLines = [];
-
-  for (const section of SECTIONS) {
-    const lines = await scrapeSection(page, section);
-    allLines.push(...lines);
+  let lines = [];
+  for (const sec of SECTIONS) {
+    const part = await scrapeSection(page, sec);
+    lines.push(...part);
   }
+
+  // find icons + divine rate
+  const byName = new Map(lines.map(x => [x.name.toLowerCase(), x]));
+  const exalt = byName.get("exalted orb");
+  const divine = byName.get("divine orb");
+
+  const baseIcon = exalt?.icon || "";
+  const divineInEx = divine?.exaltedValue || null;
 
   await browser.close();
-
-  // === FIND RATES ===
-  const ex = allLines.find(x => x.name.toLowerCase() === "exalted orb");
-  const div = allLines.find(x => x.name.toLowerCase() === "divine orb");
-
-  if (!ex || !div) {
-    console.error("Missing Exalted or Divine Orb");
-    process.exit(1);
-  }
-
-  const chaosPerExalted = ex.chaosValue;
-  const chaosPerDivine = div.chaosValue;
-
-  // === CONVERT ===
-  for (const l of allLines) {
-    l.exaltedValue = l.chaosValue / chaosPerExalted;
-  }
 
   const out = {
     updatedAt: new Date().toISOString(),
     league: LEAGUE,
-    base: "Chaos Orb",
-    chaosPerExalted,
-    chaosPerDivine,
-    lines: allLines
+    sourceBase: `https://poe.ninja/poe2/economy/${LEAGUE}`,
+    valueDisplay: "exalted",
+    base: "Exalted Orb",
+    baseIcon,
+    divineInEx, // IMPORTANT: 1 Divine = X Exalted (direct from value=exalted)
+    sections: SECTIONS,
+    lines
   };
 
   fs.mkdirSync("data", { recursive: true });
   fs.writeFileSync("data/prices.json", JSON.stringify(out, null, 2), "utf8");
 
-  console.log(`DONE: ${allLines.length} items`);
-  console.log(`1 Ex = ${chaosPerExalted} Chaos`);
-  console.log(`1 Div = ${chaosPerDivine} Chaos`);
+  console.log(`TOTAL lines=${lines.length}`);
+  console.log(`Divine Orb exaltedValue (1 Div in Ex) = ${divineInEx}`);
 })();
