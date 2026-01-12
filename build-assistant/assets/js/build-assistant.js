@@ -32,9 +32,9 @@ function cacheSet(key, value) {
 }
 
 // ---- Config ----
-// If CORS blocks poe2db, set PROXY_BASE to your proxy endpoint, e.g.
-// const PROXY_BASE = "https://your-worker.example.com/?url=";
-const PROXY_BASE = ""; // empty = direct fetch
+// Using your Cloudflare Worker as CORS proxy
+// IMPORTANT: keep "?url=" at the end
+const PROXY_BASE = "https://poe2-proxy-kt.datrise13.workers.dev/?url=";
 
 function proxify(url) {
   return PROXY_BASE ? (PROXY_BASE + encodeURIComponent(url)) : url;
@@ -206,7 +206,7 @@ async function loadData(force = false) {
     }
   } catch (e) {
     console.error(e);
-    setStatus("Error: fetch blocked (CORS?) or parse failed. Check console.");
+    setStatus("Error: fetch blocked or parse failed. Check console.");
     return null;
   }
 
@@ -246,7 +246,7 @@ async function runSearch() {
 
   renderActiveTags(archetype, theme);
 
-  // Required tags (starter mapping – you can refine after seeing real poe2db tags)
+  // Required tags (starter mapping – refine after observing real poe2db tags)
   const reqSkillTags = [];
   if (archetype === "Bow") reqSkillTags.push("Projectile");
   if (archetype === "Crossbow") reqSkillTags.push("Projectile");
@@ -300,6 +300,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   DATA = await loadData(false);
-  // Optional: auto-run once
+  // Optional auto-run
   // await runSearch();
 });
