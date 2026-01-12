@@ -1,9 +1,6 @@
 /* ==========================================
    PoE2 Build Assistant (client-side)
-   - Fetch + cache poe2db pages
-   - Parse tags (heuristic)
-   - Filter + compatibility rules
-   File: /assets/js/build-assistant.js
+   STEP 1: Robust uniques parsing by archetype
    ========================================== */
 
 const $ = (id) => document.getElementById(id);
@@ -14,7 +11,7 @@ function setStatus(msg) {
   console.log(msg);
 }
 
-// ---- Cache helpers (localStorage) ----
+/* ---------------- Cache helpers ---------------- */
 function cacheGet(key) {
   try {
     const raw = localStorage.getItem(key);
@@ -26,34 +23,27 @@ function cacheGet(key) {
 function cacheSet(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore quota errors
-  }
+  } catch {}
 }
 
-// ---- Config ----
-// Using your Cloudflare Worker as CORS proxy
-// IMPORTANT: keep "?url=" at the end
+/* ---------------- Proxy config ---------------- */
 const PROXY_BASE = "https://poe2-proxy-kt.datrise13.workers.dev/?url=";
 
 function proxify(url) {
-  return PROXY_BASE ? (PROXY_BASE + encodeURIComponent(url)) : url;
+  return PROXY_BASE + encodeURIComponent(url);
 }
 
-// Sources
+/* ---------------- Sources ---------------- */
 const SKILLS_URL  = "https://poe2db.tw/us/Skill_Gems";
 const UNIQUES_URL = "https://poe2db.tw/us/Unique_item";
 
-// cache keys
-const CACHE_SKILLS  = "poe2_skills_v1";
-const CACHE_UNIQUES = "poe2_uniques_v1";
+const CACHE_SKILLS  = "poe2_skills_v2";
+const CACHE_UNIQUES = "poe2_uniques_v2";
 
-// ---- Fetch HTML safely ----
+/* ---------------- Fetch helpers ---------------- */
 async function fetchHtml(url) {
-  const res = await fetch(proxify(url), {
-    headers: { "Accept": "text/html" }
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  const res = await fetch(proxify(url));
+  if (!res.ok) throw new Error("Fetch failed");
   return await res.text();
 }
 
@@ -61,133 +51,115 @@ function htmlToDoc(html) {
   return new DOMParser().parseFromString(html, "text/html");
 }
 
-// ---- Parsing ----
+/* ---------------- Parsing: Skill Gems ---------------- */
 function parseSkillGems(html) {
   const doc = htmlToDoc(html);
-  const results = [];
   const rows = Array.from(doc.querySelectorAll("table tr"));
+  const out = [];
 
   for (const tr of rows) {
     const tds = tr.querySelectorAll("td");
-    if (!tds || tds.length < 2) continue;
+    if (tds.length < 2) continue;
 
-    const name = (tds[1].textContent || "").trim();
+    const name = tds[1].textContent.trim();
     if (!name) continue;
 
-    const rowText = tr.textContent || "";
-    const tags = extractTagsFromText(rowText);
+    const text = tr.textContent;
+    const tags = extractTags(text);
 
-    results.push({ name, tags });
+    out.push({ name, tags });
   }
-
-  return dedupeByName(results);
+  return dedupeByName(out);
 }
 
+/* ---------------- Parsing: Uniques (ROBUST) ----------------
+   We only extract:
+   - name
+   - inferred weapon compatibility
+------------------------------------------------------------- */
 function parseUniques(html) {
   const doc = htmlToDoc(html);
-  const results = [];
-  const rows = Array.from(doc.querySelectorAll("table tr"));
+  const out = [];
 
-  for (const tr of rows) {
-    const tds = tr.querySelectorAll("td");
-    if (!tds || tds.length < 2) continue;
+  const links = Array.from(doc.querySelectorAll("a"));
+  for (const a of links) {
+    const name = a.textContent?.trim();
+    if (!name || name.length < 3) continue;
 
-    const name = (tds[1].textContent || "").trim();
-    if (!name) continue;
+    const href = a.getAttribute("href") || "";
+    if (!href.includes("/Unique")) continue;
 
-    const rowText = (tr.textContent || "").trim();
-    const tags = extractTagsFromText(rowText);
-    const gear = inferGearFromText(rowText);
+    const context = a.parentElement?.textContent || "";
+    const gear = inferGearFromText(context + " " + name);
 
-    results.push({ name, tags, gear });
+    out.push({ name, gear });
   }
 
-  return dedupeByName(results);
+  return dedupeByName(out);
 }
 
-// ---- Utilities ----
+/* ---------------- Utilities ---------------- */
 function dedupeByName(arr) {
   const map = new Map();
   for (const x of arr) {
-    const k = (x.name || "").toLowerCase();
-    if (!k) continue;
+    const k = x.name.toLowerCase();
     if (!map.has(k)) map.set(k, x);
   }
   return Array.from(map.values());
 }
 
-function extractTagsFromText(s) {
-  // Heuristic: detect a comma-separated tag list like "Attack, AoE, Melee, Slam"
-  // Keep conservative to avoid junk.
-  const maybe = (s || "")
-    .split("\n")
-    .map(x => x.trim())
-    .filter(Boolean)
-    .join(" ");
-
-  // Find a segment with multiple comma tokens
-  const m = maybe.match(/\b([A-Z][A-Za-z]+(?:\s[A-Z][A-Za-z]+)*)\s*,\s*([A-Z][A-Za-z].+?)\b/);
+function extractTags(text) {
+  const m = text.match(/([A-Z][A-Za-z]+(?:,\s*[A-Z][A-Za-z]+)+)/);
   if (!m) return [];
-
-  const segment = m[0];
-  return segment
-    .split(",")
-    .map(t => t.trim())
-    .filter(t => t.length >= 3 && t.length <= 24);
+  return m[1].split(",").map(t => t.trim());
 }
 
 function inferGearFromText(s) {
-  const lower = (s || "").toLowerCase();
-  if (lower.includes("bow")) return { slot: "mainhand", weapon: "bow" };
-  if (lower.includes("crossbow")) return { slot: "mainhand", weapon: "crossbow" };
-  if (lower.includes("quarterstaff") || lower.includes("staff")) return { slot: "mainhand", weapon: "staff" };
-  if (lower.includes("shield") || lower.includes("buckler")) return { slot: "offhand", weapon: "shield" };
-  if (lower.includes("quiver")) return { slot: "offhand", weapon: "quiver" };
-  return { slot: "unknown", weapon: "unknown" };
+  const t = s.toLowerCase();
+  if (t.includes("bow")) return "bow";
+  if (t.includes("crossbow")) return "crossbow";
+  if (t.includes("staff")) return "staff";
+  if (t.includes("sword")) return "sword";
+  if (t.includes("axe")) return "axe";
+  if (t.includes("mace")) return "mace";
+  if (t.includes("dagger")) return "dagger";
+  if (t.includes("shield")) return "shield";
+  return "generic";
 }
 
-// Compatibility rules (minimal starter)
-function isCompatible(archetype, item, strict) {
-  if (!strict) return true;
-
-  if (archetype === "Bow") {
-    if (item.gear?.weapon === "shield" || item.gear?.weapon === "buckler" || item.gear?.weapon === "focus") return false;
-  }
-  if (archetype === "Crossbow") {
-    if (item.gear?.weapon === "quiver") return false;
-  }
-  return true;
-}
-
-function hasAllTags(entityTags, requiredTags) {
-  const set = new Set((entityTags || []).map(t => t.toLowerCase()));
-  return requiredTags.every(t => set.has(t.toLowerCase()));
+function compatible(archetype, gear) {
+  if (archetype === "Bow") return gear === "bow";
+  if (archetype === "Crossbow") return gear === "crossbow";
+  if (archetype === "Melee") return ["sword","axe","mace","dagger","staff"].includes(gear);
+  if (archetype === "Spell") return ["staff","dagger"].includes(gear);
+  if (archetype === "Minion") return true;
+  return false;
 }
 
 function escapeHtml(s) {
-  return (s || "").replace(/[&<>"']/g, (c) => ({
+  return s.replace(/[&<>"']/g, c => ({
     "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
   }[c]));
 }
 
-function tagsToBadges(tags = []) {
-  if (!tags.length) return "";
-  const safe = tags.slice(0, 8).map(t => `<span class="badge">${escapeHtml(t)}</span>`).join("");
-  return `<div class="badges">${safe}</div>`;
+/* ---------------- Render helpers ---------------- */
+function renderList(el, items, renderer) {
+  el.innerHTML = "";
+  if (!items.length) {
+    el.innerHTML = `<div class="muted">No results</div>`;
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for (const it of items.slice(0, 40)) {
+    const d = document.createElement("div");
+    d.innerHTML = renderer(it);
+    frag.appendChild(d.firstElementChild);
+  }
+  el.appendChild(frag);
 }
 
-function renderActiveTags(archetype, theme) {
-  const el = $("activeTags");
-  if (!el) return;
-
-  el.innerHTML = `
-    <span class="chip">${escapeHtml(archetype)}</span>
-    <span class="chip">${escapeHtml(theme)}</span>
-  `;
-}
-
-// ---- Data loading ----
-async function loadData(force = false) {
+/* ---------------- Load data ---------------- */
+async function loadData(force=false) {
   setStatus("Loading data…");
 
   let skills = !force ? cacheGet(CACHE_SKILLS) : null;
@@ -195,18 +167,15 @@ async function loadData(force = false) {
 
   try {
     if (!skills) {
-      const html = await fetchHtml(SKILLS_URL);
-      skills = parseSkillGems(html);
+      skills = parseSkillGems(await fetchHtml(SKILLS_URL));
       cacheSet(CACHE_SKILLS, skills);
     }
     if (!uniques) {
-      const html = await fetchHtml(UNIQUES_URL);
-      uniques = parseUniques(html);
+      uniques = parseUniques(await fetchHtml(UNIQUES_URL));
       cacheSet(CACHE_UNIQUES, uniques);
     }
   } catch (e) {
-    console.error(e);
-    setStatus("Error: fetch blocked or parse failed. Check console.");
+    setStatus("Error loading data");
     return null;
   }
 
@@ -214,92 +183,47 @@ async function loadData(force = false) {
   return { skills, uniques };
 }
 
-// ---- Render ----
-function renderList(el, items, formatter) {
-  if (!el) return;
-
-  el.innerHTML = "";
-  if (!items.length) {
-    el.innerHTML = `<div class="muted">No results</div>`;
-    return;
-  }
-
-  const frag = document.createDocumentFragment();
-  for (const it of items.slice(0, 50)) {
-    const wrap = document.createElement("div");
-    wrap.innerHTML = formatter(it);
-    if (wrap.firstElementChild) frag.appendChild(wrap.firstElementChild);
-  }
-  el.appendChild(frag);
-}
-
-// ---- Main ----
+/* ---------------- Main logic ---------------- */
 let DATA = null;
 
 async function runSearch() {
   if (!DATA) DATA = await loadData(false);
   if (!DATA) return;
 
-  const archetype = $("tagArchetype")?.value || "Bow";
-  const theme = $("tagTheme")?.value || "Chaos";
-  const strict = $("strictCompat")?.checked ?? true;
+  const archetype = $("tagArchetype").value;
 
-  renderActiveTags(archetype, theme);
+  const uniques = DATA.uniques.filter(u =>
+    compatible(archetype, u.gear)
+  );
 
-  // Required tags (starter mapping – refine after observing real poe2db tags)
-  const reqSkillTags = [];
-  if (archetype === "Bow") reqSkillTags.push("Projectile");
-  if (archetype === "Crossbow") reqSkillTags.push("Projectile");
-  if (archetype === "Melee") reqSkillTags.push("Melee");
-  if (archetype === "Spell") reqSkillTags.push("Spell");
-  if (archetype === "Minion") reqSkillTags.push("Minion");
-  reqSkillTags.push(theme);
-
-  const reqItemTags = [theme];
-
-  const skills = DATA.skills
-    .filter(s => hasAllTags(s.tags, reqSkillTags))
-    .slice(0, 200);
-
-  const uniques = DATA.uniques
-    .filter(u => hasAllTags(u.tags, reqItemTags))
-    .filter(u => isCompatible(archetype, u, strict))
-    .slice(0, 200);
-
-  renderList($("skillsList"), skills, (s) => `
+  renderList($("uniquesList"), uniques, u => `
     <div class="result-item">
-      <div class="result-icon" aria-hidden="true"></div>
+      <div class="result-icon"></div>
       <div>
-        <div class="result-title">${escapeHtml(s.name)}</div>
-        <div class="result-meta">${escapeHtml((s.tags || []).join(", "))}</div>
-        ${tagsToBadges(s.tags || [])}
+        <div class="result-title">${escapeHtml(u.name)}</div>
+        <div class="result-meta">weapon: ${u.gear}</div>
       </div>
     </div>
   `);
 
-  renderList($("uniquesList"), uniques, (u) => `
+  renderList($("skillsList"), DATA.skills, s => `
     <div class="result-item">
-      <div class="result-icon" aria-hidden="true"></div>
+      <div class="result-icon"></div>
       <div>
-        <div class="result-title">${escapeHtml(u.name)}</div>
-        <div class="result-meta">${escapeHtml((u.tags || []).join(", "))}</div>
-        <div class="result-meta">gear: ${escapeHtml(u.gear?.weapon || "unknown")}</div>
-        ${tagsToBadges(u.tags || [])}
+        <div class="result-title">${escapeHtml(s.name)}</div>
+        <div class="result-meta">${(s.tags||[]).join(", ")}</div>
       </div>
     </div>
   `);
 }
 
+/* ---------------- Boot ---------------- */
 document.addEventListener("DOMContentLoaded", async () => {
-  $("btnSearch")?.addEventListener("click", runSearch);
-
-  $("btnRefresh")?.addEventListener("click", async () => {
-    localStorage.removeItem(CACHE_SKILLS);
-    localStorage.removeItem(CACHE_UNIQUES);
+  $("btnSearch").addEventListener("click", runSearch);
+  $("btnRefresh").addEventListener("click", async () => {
+    localStorage.clear();
     DATA = await loadData(true);
   });
 
   DATA = await loadData(false);
-  // Optional auto-run
-  // await runSearch();
 });
