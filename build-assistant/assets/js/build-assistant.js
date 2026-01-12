@@ -1,6 +1,6 @@
 /* ==========================================
    PoE2 Build Assistant (client-side)
-   STEP 1: Robust uniques parsing by archetype
+   STEP 1b: FIX uniques parsing (real poe2db structure)
    ========================================== */
 
 const $ = (id) => document.getElementById(id);
@@ -26,32 +26,28 @@ function cacheSet(key, value) {
   } catch {}
 }
 
-/* ---------------- Proxy config ---------------- */
+/* ---------------- Proxy ---------------- */
 const PROXY_BASE = "https://poe2-proxy-kt.datrise13.workers.dev/?url=";
-
-function proxify(url) {
-  return PROXY_BASE + encodeURIComponent(url);
-}
+const proxify = (url) => PROXY_BASE + encodeURIComponent(url);
 
 /* ---------------- Sources ---------------- */
 const SKILLS_URL  = "https://poe2db.tw/us/Skill_Gems";
 const UNIQUES_URL = "https://poe2db.tw/us/Unique_item";
 
-const CACHE_SKILLS  = "poe2_skills_v2";
-const CACHE_UNIQUES = "poe2_uniques_v2";
+const CACHE_SKILLS  = "poe2_skills_v3";
+const CACHE_UNIQUES = "poe2_uniques_v3";
 
-/* ---------------- Fetch helpers ---------------- */
+/* ---------------- Fetch ---------------- */
 async function fetchHtml(url) {
   const res = await fetch(proxify(url));
   if (!res.ok) throw new Error("Fetch failed");
   return await res.text();
 }
 
-function htmlToDoc(html) {
-  return new DOMParser().parseFromString(html, "text/html");
-}
+const htmlToDoc = (html) =>
+  new DOMParser().parseFromString(html, "text/html");
 
-/* ---------------- Parsing: Skill Gems ---------------- */
+/* ---------------- Skill Gems ---------------- */
 function parseSkillGems(html) {
   const doc = htmlToDoc(html);
   const rows = Array.from(doc.querySelectorAll("table tr"));
@@ -64,33 +60,41 @@ function parseSkillGems(html) {
     const name = tds[1].textContent.trim();
     if (!name) continue;
 
-    const text = tr.textContent;
-    const tags = extractTags(text);
-
+    const tags = extractTags(tr.textContent);
     out.push({ name, tags });
   }
   return dedupeByName(out);
 }
 
-/* ---------------- Parsing: Uniques (ROBUST) ----------------
-   We only extract:
-   - name
-   - inferred weapon compatibility
-------------------------------------------------------------- */
+/* ---------------- Uniques (FIXED) ----------------
+   Strategy:
+   - grab ALL links with visible text
+   - filter by text length + capitalization
+   - infer weapon from surrounding text
+-------------------------------------------------- */
 function parseUniques(html) {
   const doc = htmlToDoc(html);
   const out = [];
 
   const links = Array.from(doc.querySelectorAll("a"));
+
   for (const a of links) {
     const name = a.textContent?.trim();
-    if (!name || name.length < 3) continue;
+    if (!name) continue;
 
-    const href = a.getAttribute("href") || "";
-    if (!href.includes("/Unique")) continue;
+    // Unique item names are Title Case and reasonably long
+    if (name.length < 4 || name.length > 60) continue;
+    if (!/^[A-Z]/.test(name)) continue;
 
-    const context = a.parentElement?.textContent || "";
+    const context =
+      (a.closest("tr")?.textContent || "") +
+      " " +
+      (a.parentElement?.textContent || "");
+
     const gear = inferGearFromText(context + " " + name);
+
+    // discard totally generic garbage
+    if (gear === "unknown") continue;
 
     out.push({ name, gear });
   }
@@ -110,8 +114,7 @@ function dedupeByName(arr) {
 
 function extractTags(text) {
   const m = text.match(/([A-Z][A-Za-z]+(?:,\s*[A-Z][A-Za-z]+)+)/);
-  if (!m) return [];
-  return m[1].split(",").map(t => t.trim());
+  return m ? m[1].split(",").map(t => t.trim()) : [];
 }
 
 function inferGearFromText(s) {
@@ -124,26 +127,27 @@ function inferGearFromText(s) {
   if (t.includes("mace")) return "mace";
   if (t.includes("dagger")) return "dagger";
   if (t.includes("shield")) return "shield";
-  return "generic";
+  return "unknown";
 }
 
 function compatible(archetype, gear) {
   if (archetype === "Bow") return gear === "bow";
   if (archetype === "Crossbow") return gear === "crossbow";
-  if (archetype === "Melee") return ["sword","axe","mace","dagger","staff"].includes(gear);
-  if (archetype === "Spell") return ["staff","dagger"].includes(gear);
+  if (archetype === "Melee")
+    return ["sword","axe","mace","dagger","staff"].includes(gear);
+  if (archetype === "Spell")
+    return ["staff","dagger"].includes(gear);
   if (archetype === "Minion") return true;
   return false;
 }
 
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, c => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
-  }[c]));
-}
+const esc = (s) =>
+  s.replace(/[&<>"']/g, c =>
+    ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c])
+  );
 
-/* ---------------- Render helpers ---------------- */
-function renderList(el, items, renderer) {
+/* ---------------- Render ---------------- */
+function renderList(el, items, render) {
   el.innerHTML = "";
   if (!items.length) {
     el.innerHTML = `<div class="muted">No results</div>`;
@@ -152,13 +156,13 @@ function renderList(el, items, renderer) {
   const frag = document.createDocumentFragment();
   for (const it of items.slice(0, 40)) {
     const d = document.createElement("div");
-    d.innerHTML = renderer(it);
+    d.innerHTML = render(it);
     frag.appendChild(d.firstElementChild);
   }
   el.appendChild(frag);
 }
 
-/* ---------------- Load data ---------------- */
+/* ---------------- Load ---------------- */
 async function loadData(force=false) {
   setStatus("Loading data…");
 
@@ -174,7 +178,7 @@ async function loadData(force=false) {
       uniques = parseUniques(await fetchHtml(UNIQUES_URL));
       cacheSet(CACHE_UNIQUES, uniques);
     }
-  } catch (e) {
+  } catch {
     setStatus("Error loading data");
     return null;
   }
@@ -183,7 +187,7 @@ async function loadData(force=false) {
   return { skills, uniques };
 }
 
-/* ---------------- Main logic ---------------- */
+/* ---------------- Main ---------------- */
 let DATA = null;
 
 async function runSearch() {
@@ -200,7 +204,7 @@ async function runSearch() {
     <div class="result-item">
       <div class="result-icon"></div>
       <div>
-        <div class="result-title">${escapeHtml(u.name)}</div>
+        <div class="result-title">${esc(u.name)}</div>
         <div class="result-meta">weapon: ${u.gear}</div>
       </div>
     </div>
@@ -210,7 +214,7 @@ async function runSearch() {
     <div class="result-item">
       <div class="result-icon"></div>
       <div>
-        <div class="result-title">${escapeHtml(s.name)}</div>
+        <div class="result-title">${esc(s.name)}</div>
         <div class="result-meta">${(s.tags||[]).join(", ")}</div>
       </div>
     </div>
