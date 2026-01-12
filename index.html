@@ -16,28 +16,6 @@
 
 <body>
 
-  <!-- TOP RIGHT (like "Feedback" button) -->
-<a
-  id="redditBtn"
-  class="resetBtn redditBtn"
-  href="https://www.reddit.com/r/PathOfExile2/comments/1qaa7yx/poe2_farm_calculator_profit_tracker/"
-  target="_blank"
-  rel="noopener"
-  title="Open Reddit"
->
-  Feedback
-</a>
-
-<!-- TOP RIGHT (new tool button) -->
-<a
-  id="buildAssistantBtn"
-  class="resetBtn redditBtn buildAssistantBtn"
-  href="build-assistant.html"
-  title="Open Build Assistant (Work In Progress)"
->
-  Build Assistant (WIP)
-</a>
-
   <h1>PoE2 Loot Calculator</h1>
 
   <!-- HEADER BAR -->
@@ -61,8 +39,9 @@
       </div>
     </div>
 
-    <!-- TOTALS (right) -->
+    <!-- TOTALS + ACTIONS (right) -->
     <div class="totals-mini">
+
       <div class="totalBox">
         <div class="tLabel">Total Invest</div>
         <div class="tValue" id="totalInvest">0</div>
@@ -78,12 +57,30 @@
         <div class="tValue" id="gain">0</div>
       </div>
 
-      <!-- toggle Ex/Div display for totals -->
+      <!-- NEW: header links -->
+      <a
+        class="topLinkBtn"
+        href="https://www.reddit.com/r/PathOfExile2/comments/1qaa7yx/poe2_farm_calculator_profit_tracker/"
+        target="_blank"
+        rel="noopener"
+        title="Open Reddit"
+      >
+        Reddit
+      </a>
+
+      <a
+        class="topLinkBtn"
+        href="build-assistant.html"
+        title="Open Build Assistant (Work In Progress)"
+      >
+        Build Assistant (WIP)
+      </a>
+
+      <!-- existing buttons -->
       <button class="toggleBtn" id="displayUnitBtn" type="button">Show Div</button>
-
       <button class="resetBtn" id="resetBtn" type="button">Reset</button>
-    </div>
 
+    </div>
   </div>
 
   <!-- MAIN LAYOUT -->
@@ -94,11 +91,8 @@
       <div class="panel-title">Market List</div>
       <div class="panel-title">League: Fate of the Vaal</div>
 
-      <!-- TABS -->
       <div class="tabs" id="tabs"></div>
-
       <input id="marketSearch" placeholder="Search..." />
-
       <div id="marketList"></div>
     </aside>
 
@@ -127,7 +121,6 @@
           <span class="btnIcon">+</span> Manual row
         </button>
 
-        <!-- same spacing as others -->
         <button type="button" id="exportCsvBtn">Export CSV</button>
       </div>
     </main>
@@ -140,28 +133,21 @@
   <!-- STATUS -->
   <div id="fetchStatus" class="status">Status: waiting...</div>
 
-<footer class="site-signature" role="contentinfo">
-  <span>© <span id="year"></span> PoE2 Loot Calculator</span>
-  <span class="sep">•</span>
-  <span>Created by <strong>KT_</strong></span>
-  <span class="sep">•</span>
-  <a href="https://github.com/twiq13/" target="_blank" rel="noopener">
-    github.com/twiq13
-  </a>
-</footer>
+  <!-- FOOTER -->
+  <footer class="site-signature" role="contentinfo">
+    <span>© <span id="year"></span> PoE2 Loot Calculator</span>
+    <span class="sep">•</span>
+    <span>Created by <strong>KT_</strong></span>
+    <span class="sep">•</span>
+    <a href="https://github.com/twiq13/" target="_blank" rel="noopener">
+      github.com/twiq13
+    </a>
+  </footer>
 
-<script>
-  document.getElementById("year").textContent = new Date().getFullYear();
-</script>
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
 
-
-  <!-- JS -->
   <script src="app.js?v=1" defer></script>
 </body>
 </html>
-
-
-
-
-
-
