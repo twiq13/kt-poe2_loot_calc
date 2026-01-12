@@ -487,4 +487,14 @@ a.resetBtn{
 .site-signature a:hover{ text-decoration:underline; }
 .site-signature .sep{ opacity:.5; }
 
+/* Build Assistant button (WIP) - stacked under Reddit */
+.buildAssistantBtn{
+  top:60px;      /* push it below the Reddit button */
+  right:20px;
+  background:#222;
+  border:1px solid #444;
+}
+.buildAssistantBtn:hover{ background:#2f2f2f; }
+
+
 
