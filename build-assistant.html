@@ -5,29 +5,29 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>PoE2 Build Assistant</title>
 
-  <!-- Build Assistant CSS (self-contained) -->
-  <link rel="stylesheet" href="build-assistant/assets/css/build-assistant.css">
+  <link rel="stylesheet" href="build-assistant/assets/css/build-assistant.css" />
 </head>
 
 <body>
-  <!-- ========= HEADER ========= -->
-  <header>
-    <div class="container header-inner">
-      <div class="brand">
-        <div class="brand-title">PoE2 Tools</div>
-        <div class="brand-sub">Build Assistant</div>
-      </div>
 
+  <!-- HEADER BAR (match Loot Calculator) -->
+  <div class="header-bar">
+    <div class="header-left">
+      <div class="site-title">PoE2 Build Assistant</div>
+      <div class="site-subtitle muted">Tags → Uniques + Skill Gems suggestions</div>
+    </div>
+
+    <div class="header-right">
       <nav class="nav">
         <a href="index.html" class="nav-link">Home</a>
         <a href="build-assistant.html" class="nav-link active">Build Assistant</a>
       </nav>
     </div>
-  </header>
+  </div>
 
-  <!-- ========= MAIN ========= -->
+  <!-- MAIN -->
   <main class="container">
-    <h1>Build Assistant</h1>
+    <h1 class="page-title">Build Assistant</h1>
     <p class="muted">
       Choose tags (e.g. Bow + Chaos) → get compatible Uniques + Skill Gems.
     </p>
@@ -59,15 +59,12 @@
           </select>
         </div>
 
-        <div class="field actions">
-          <label class="sr-only" for="btnSearch">Actions</label>
-          <button id="btnSearch" type="button" class="btn primary">Find suggestions</button>
-        </div>
+        <button id="btnSearch" type="button" class="btn primary">Find suggestions</button>
       </div>
 
       <div id="activeTags" class="chips" aria-live="polite"></div>
 
-      <div class="row">
+      <div class="row row-tight">
         <label class="checkbox">
           <input type="checkbox" id="onlyUniques" checked />
           Only Uniques
@@ -96,11 +93,11 @@
       </div>
     </section>
 
-    <footer class="site-signature">
+    <div class="site-signature">
       <span>Created by <strong>KT_</strong></span>
       <span class="sep">•</span>
       <a href="https://github.com/twiq13/" target="_blank" rel="noopener noreferrer">github.com/twiq13</a>
-    </footer>
+    </div>
   </main>
 
   <script src="build-assistant/assets/js/build-assistant.js"></script>
